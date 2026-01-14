@@ -989,9 +989,34 @@ class DockerImageToRootFS:
         return is_android
 
     def _validate_critical_files(self, rootfs_dir):
-        """验证关键文件是否存在"""
+        """验证关键文件是否存在（宽松模式，仅警告）"""
         missing_files = []
         
+        # 在Android环境中，使用更宽松的验证
+        # 因为有些镜像可能使用非标准路径
+        if self._is_android_environment():
+            logger.debug("Android环境：使用宽松的文件验证模式")
+            
+            # 只检查rootfs是否为空
+            if not os.listdir(rootfs_dir):
+                missing_files.append('rootfs is empty')
+                return missing_files
+            
+            # 检查是否至少有一些基本目录
+            basic_dirs = ['bin', 'usr', 'lib', 'etc', 'var']
+            has_basic_structure = any(
+                os.path.exists(os.path.join(rootfs_dir, d)) 
+                for d in basic_dirs
+            )
+            
+            if not has_basic_structure:
+                logger.warning(f"警告：rootfs缺少基本目录结构 ({', '.join(basic_dirs)})")
+                logger.warning("这可能是正常的，某些镜像使用非标准布局")
+            
+            # 在Android环境中不强制要求特定文件
+            return []
+        
+        # 非Android环境：使用标准验证
         # 检查shell
         shells = ['/bin/sh', '/bin/bash', '/bin/ash']
         has_shell = False
