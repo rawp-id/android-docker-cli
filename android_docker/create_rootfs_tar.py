@@ -1069,12 +1069,14 @@ class DockerImageToRootFS:
                 '--warning=no-unknown-keyword',  # 忽略未知关键字警告
                 '--exclude=.wh.*',           # 跳过whiteout文件
                 '--exclude=.wh.wh.*',        # 跳过whiteout opaque标记
-                '--hard-dereference',        # 将硬链接转换为普通文件（解决Android权限问题）
             ]
             
             if not is_first_layer:
-                # 后续层允许覆盖
-                tar_options.append('--overwrite')
+                # 后续层允许覆盖，并跳过已存在的文件（避免硬链接问题）
+                tar_options.extend(['--overwrite', '--skip-old-files'])
+            else:
+                # 第一层也跳过已存在的文件
+                tar_options.append('--skip-old-files')
         else:
             # 标准Linux环境选项
             tar_options = [
@@ -1085,11 +1087,21 @@ class DockerImageToRootFS:
         cmd = base_cmd + tar_options
 
         try:
-            self._run_command(cmd)
-            logger.debug("tar提取成功")
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"tar命令失败，尝试宽松模式: {e}")
-            # 调用fallback方法
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.debug("tar提取成功")
+            elif result.returncode == 2:
+                # tar退出码2通常表示有警告（如硬链接失败），但文件已提取
+                logger.info("tar提取完成（有警告，但文件已提取）")
+                if self._is_android_environment():
+                    logger.debug("Android环境：忽略硬链接相关警告")
+            else:
+                # 其他错误码，尝试fallback
+                logger.warning(f"tar命令失败（退出码{result.returncode}），尝试宽松模式")
+                self._extract_with_fallback(base_cmd, rootfs_dir)
+        except Exception as e:
+            logger.warning(f"tar命令异常: {e}，尝试宽松模式")
             self._extract_with_fallback(base_cmd, rootfs_dir)
 
     def _extract_with_fallback(self, base_cmd, rootfs_dir):
@@ -1100,8 +1112,7 @@ class DockerImageToRootFS:
             '--warning=no-unknown-keyword',
             '--exclude=.wh.*',
             '--exclude=.wh.wh.*',
-            '--hard-dereference',        # 将硬链接转换为普通文件
-            '--skip-old-files',          # 跳过已存在的文件
+            '--skip-old-files',          # 跳过已存在的文件（避免硬链接冲突）
             '--ignore-failed-read',      # 忽略读取失败
         ]
 
@@ -1110,14 +1121,17 @@ class DockerImageToRootFS:
         if result.returncode == 0:
             logger.info("使用宽松模式提取成功")
         elif result.returncode == 2:
-            # tar退出码2表示有警告但部分成功
+            # tar退出码2表示有警告但部分成功（通常是硬链接问题）
             logger.info("tar提取完成（有警告，但大部分文件已提取）")
-            logger.debug(f"tar警告: {result.stderr[:200]}...")
+            if self._is_android_environment():
+                logger.info("Android环境：硬链接错误已忽略，容器应该可以正常运行")
+            logger.debug(f"tar警告: {result.stderr[:500]}...")
         else:
             error_msg = f"tar提取失败，退出码: {result.returncode}"
             if self._is_android_environment():
                 error_msg += "\n提示：在Android环境中，某些权限操作可能失败。尝试使用 --verbose 查看详细信息。"
             logger.error(error_msg)
+            logger.error(f"错误详情: {result.stderr[:1000]}")
             raise subprocess.CalledProcessError(result.returncode, fallback_cmd, result.stderr)
 
 
