@@ -289,15 +289,22 @@ class ProotRunner:
             entrypoint = config.get('Entrypoint', [])
             cmd = config.get('Cmd', [])
 
+            logger.debug(f"镜像配置 - Entrypoint: {entrypoint}, Cmd: {cmd}")
+
             if entrypoint:
                 if cmd:
-                    return entrypoint + cmd
+                    result = entrypoint + cmd
+                    logger.info(f"使用镜像默认命令: Entrypoint + Cmd = {result}")
+                    return result
                 else:
+                    logger.info(f"使用镜像默认命令: Entrypoint = {entrypoint}")
                     return entrypoint
             elif cmd:
+                logger.info(f"使用镜像默认命令: Cmd = {cmd}")
                 return cmd
 
         # 默认命令 - 查找可用的shell
+        logger.warning("镜像配置中没有找到Entrypoint或Cmd，使用默认shell")
         default_shells = ['/bin/bash', '/bin/sh', '/bin/ash', '/bin/dash']
         for shell in default_shells:
             shell_path = os.path.join(self.rootfs_dir, shell.lstrip('/'))
@@ -432,9 +439,11 @@ class ProotRunner:
         # 构建最终的执行命令
         if args.command:
             final_command = args.command
+            logger.info(f"使用用户指定的命令: {final_command}")
         else:
             default_cmd = self._get_default_command()
             final_command = default_cmd
+            logger.debug(f"使用默认命令: {final_command}")
 
         # 创建启动脚本来设置环境变量
         if env_vars or self._is_android_environment():
