@@ -1069,6 +1069,7 @@ class DockerImageToRootFS:
                 '--warning=no-unknown-keyword',  # 忽略未知关键字警告
                 '--exclude=.wh.*',           # 跳过whiteout文件
                 '--exclude=.wh.wh.*',        # 跳过whiteout opaque标记
+                '--hard-dereference',        # 将硬链接转换为普通文件（解决Android权限问题）
             ]
             
             if not is_first_layer:
@@ -1099,6 +1100,7 @@ class DockerImageToRootFS:
             '--warning=no-unknown-keyword',
             '--exclude=.wh.*',
             '--exclude=.wh.wh.*',
+            '--hard-dereference',        # 将硬链接转换为普通文件
             '--skip-old-files',          # 跳过已存在的文件
             '--ignore-failed-read',      # 忽略读取失败
         ]
