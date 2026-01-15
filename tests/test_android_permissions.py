@@ -120,6 +120,66 @@ class TestWritableDirectories(unittest.TestCase):
             self.runner._is_android_environment = original_method
 
 
+class TestAndroidHostsBind(unittest.TestCase):
+    """测试Android hosts绑定"""
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp(prefix='test_hosts_')
+        self.runner = ProotRunner(cache_dir=self.test_dir)
+
+    def tearDown(self):
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+    def test_android_hosts_file_creation(self):
+        rootfs_dir = os.path.join(self.test_dir, 'rootfs')
+        os.makedirs(os.path.join(rootfs_dir, 'etc'), exist_ok=True)
+        Path(os.path.join(rootfs_dir, 'etc', 'hosts')).write_text(
+            '10.0.0.5 internal-service\n',
+            encoding='utf-8'
+        )
+
+        original_method = self.runner._is_android_environment
+        self.runner._is_android_environment = lambda: True
+
+        try:
+            bind_spec = self.runner._prepare_android_hosts_bind(rootfs_dir)
+            self.assertIsNotNone(bind_spec)
+
+            expected_path = os.path.join(self.test_dir, 'writable_dirs', 'etc_hosts')
+            self.assertEqual(bind_spec, f"{expected_path}:/etc/hosts")
+            self.assertTrue(os.path.exists(expected_path))
+
+            content = Path(expected_path).read_text(encoding='utf-8')
+            self.assertIn('10.0.0.5 internal-service', content)
+            self.assertIn('127.0.0.1 localhost', content)
+            self.assertIn('::1 localhost', content)
+        finally:
+            self.runner._is_android_environment = original_method
+
+    def test_android_hosts_file_preserves_existing(self):
+        rootfs_dir = os.path.join(self.test_dir, 'rootfs')
+        os.makedirs(rootfs_dir, exist_ok=True)
+        writable_storage = os.path.join(self.test_dir, 'writable_dirs')
+        os.makedirs(writable_storage, exist_ok=True)
+        host_hosts_path = os.path.join(writable_storage, 'etc_hosts')
+        Path(host_hosts_path).write_text('192.168.0.10 existing-host\n', encoding='utf-8')
+
+        original_method = self.runner._is_android_environment
+        self.runner._is_android_environment = lambda: True
+
+        try:
+            bind_spec = self.runner._prepare_android_hosts_bind(rootfs_dir)
+            self.assertEqual(bind_spec, f"{host_hosts_path}:/etc/hosts")
+
+            content = Path(host_hosts_path).read_text(encoding='utf-8')
+            self.assertIn('192.168.0.10 existing-host', content)
+            self.assertIn('127.0.0.1 localhost', content)
+            self.assertIn('::1 localhost', content)
+        finally:
+            self.runner._is_android_environment = original_method
+
+
 class TestCriticalFileValidation(unittest.TestCase):
     """测试关键文件验证"""
     

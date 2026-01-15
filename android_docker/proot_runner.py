@@ -401,6 +401,9 @@ class ProotRunner:
             if self.rootfs_dir:
                 writable_binds = self._prepare_writable_directories(self.rootfs_dir)
                 default_binds.extend(writable_binds)
+                hosts_bind = self._prepare_android_hosts_bind(self.rootfs_dir)
+                if hosts_bind:
+                    default_binds.append(hosts_bind)
                 logger.info("已启用Android可写目录支持")
 
         for bind in default_binds:
@@ -586,6 +589,59 @@ class ProotRunner:
 
         logger.info(f"已准备 {len(bind_mounts)} 个可写系统目录")
         return bind_mounts
+
+    def _prepare_android_hosts_bind(self, rootfs_dir):
+        """Create a host-side /etc/hosts file for Android and return its bind spec."""
+        if not rootfs_dir:
+            return None
+
+        parent_dir = os.path.dirname(rootfs_dir) if os.path.dirname(rootfs_dir) else rootfs_dir
+        writable_storage = os.path.join(parent_dir, 'writable_dirs')
+        os.makedirs(writable_storage, exist_ok=True)
+
+        host_hosts_path = os.path.join(writable_storage, 'etc_hosts')
+        source_path = host_hosts_path if os.path.exists(host_hosts_path) else None
+
+        if not source_path:
+            rootfs_hosts_path = os.path.join(rootfs_dir, 'etc', 'hosts')
+            if os.path.exists(rootfs_hosts_path):
+                source_path = rootfs_hosts_path
+
+        lines = []
+        if source_path:
+            try:
+                with open(source_path, 'r', encoding='utf-8', errors='ignore') as handle:
+                    lines = handle.read().splitlines()
+            except OSError as exc:
+                logger.debug(f"Failed to read hosts file {source_path}: {exc}")
+
+        def has_localhost(ip_address):
+            for line in lines:
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    continue
+                parts = stripped.split()
+                if ip_address in parts and 'localhost' in parts:
+                    return True
+            return False
+
+        if not has_localhost('127.0.0.1'):
+            lines.append('127.0.0.1 localhost')
+        if not has_localhost('::1'):
+            lines.append('::1 localhost')
+
+        try:
+            with open(host_hosts_path, 'w', encoding='utf-8') as handle:
+                handle.write('\n'.join(lines) + '\n')
+            try:
+                os.chmod(host_hosts_path, 0o644)
+            except OSError:
+                pass
+        except OSError as exc:
+            logger.debug(f"Failed to write hosts file {host_hosts_path}: {exc}")
+            return None
+
+        return f"{host_hosts_path}:/etc/hosts"
 
     def _prepare_environment(self):
         """准备运行环境，处理Android Termux特殊问题"""
