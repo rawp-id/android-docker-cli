@@ -524,6 +524,24 @@ class ProotRunner:
         
         return is_android
 
+    def _seed_writable_directory_structure(self, rootfs_dir, dir_path, host_dir):
+        """Mirror rootfs directory structure into the host writable directory."""
+        if not rootfs_dir:
+            return
+
+        source_dir = os.path.join(rootfs_dir, dir_path)
+        if not os.path.isdir(source_dir):
+            return
+
+        for root, dirnames, _ in os.walk(source_dir):
+            rel_root = os.path.relpath(root, source_dir)
+            target_root = host_dir if rel_root == '.' else os.path.join(host_dir, rel_root)
+            try:
+                os.makedirs(target_root, exist_ok=True)
+            except OSError as exc:
+                logger.debug(f"Failed to create writable directory structure: {target_root}: {exc}")
+                dirnames[:] = []
+
     def _prepare_writable_directories(self, rootfs_dir):
         """为Android环境准备可写的系统目录"""
         if not self._is_android_environment():
@@ -557,6 +575,8 @@ class ProotRunner:
                 os.chmod(host_dir, 0o777)  # 完全可写
             except OSError:
                 pass
+
+            self._seed_writable_directory_structure(rootfs_dir, dir_path, host_dir)
 
             # 添加到绑定挂载列表
             container_path = f"/{dir_path}"

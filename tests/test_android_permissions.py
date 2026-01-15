@@ -102,6 +102,23 @@ class TestWritableDirectories(unittest.TestCase):
         finally:
             self.runner._is_android_environment = original_method
 
+    def test_writable_directory_seeding(self):
+        """Writable dirs mirror nested rootfs directories."""
+        rootfs_dir = os.path.join(self.test_dir, 'rootfs')
+        os.makedirs(os.path.join(rootfs_dir, 'var', 'log', 'nginx'), exist_ok=True)
+        os.makedirs(os.path.join(rootfs_dir, 'var', 'cache', 'nginx', 'client_temp'), exist_ok=True)
+
+        original_method = self.runner._is_android_environment
+        self.runner._is_android_environment = lambda: True
+
+        try:
+            self.runner._prepare_writable_directories(rootfs_dir)
+            writable_storage = os.path.join(self.test_dir, 'writable_dirs')
+            self.assertTrue(os.path.isdir(os.path.join(writable_storage, 'var_log', 'nginx')))
+            self.assertTrue(os.path.isdir(os.path.join(writable_storage, 'var_cache', 'nginx', 'client_temp')))
+        finally:
+            self.runner._is_android_environment = original_method
+
 
 class TestCriticalFileValidation(unittest.TestCase):
     """测试关键文件验证"""
