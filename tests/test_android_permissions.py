@@ -273,10 +273,16 @@ class TestAndroidSupervisordSocketPatch(unittest.TestCase):
         self._orig_android = self.runner._is_android_environment
         self.runner._is_android_environment = lambda: True
 
+        self._orig_enable_patches = os.environ.get(self.runner.ENABLE_IMAGE_PATCHES_ENV)
         self._orig_env = os.environ.get(self.runner.DISABLE_SUPERVISOR_SOCKET_PATCH_ENV)
 
     def tearDown(self):
         self.runner._is_android_environment = self._orig_android
+
+        if self._orig_enable_patches is None:
+            os.environ.pop(self.runner.ENABLE_IMAGE_PATCHES_ENV, None)
+        else:
+            os.environ[self.runner.ENABLE_IMAGE_PATCHES_ENV] = self._orig_enable_patches
 
         if self._orig_env is None:
             os.environ.pop(self.runner.DISABLE_SUPERVISOR_SOCKET_PATCH_ENV, None)
@@ -301,6 +307,7 @@ class TestAndroidSupervisordSocketPatch(unittest.TestCase):
             encoding='utf-8'
         )
 
+        os.environ[self.runner.ENABLE_IMAGE_PATCHES_ENV] = '1'
         self.runner._maybe_patch_supervisord_socket(self.rootfs_dir)
 
         patched = Path(conf_path).read_text(encoding='utf-8')
@@ -317,12 +324,64 @@ class TestAndroidSupervisordSocketPatch(unittest.TestCase):
             encoding='utf-8'
         )
 
+        os.environ[self.runner.ENABLE_IMAGE_PATCHES_ENV] = '1'
         os.environ[self.runner.DISABLE_SUPERVISOR_SOCKET_PATCH_ENV] = '1'
         self.runner._maybe_patch_supervisord_socket(self.rootfs_dir)
 
         patched = Path(conf_path).read_text(encoding='utf-8')
         self.assertIn("[unix_http_server]", patched)
         self.assertIn("file=/var/run/supervisor.sock", patched)
+
+
+class TestAndroidLink2SymlinkMode(unittest.TestCase):
+    """Test Android default link2symlink behavior and escape hatch."""
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp(prefix='test_link2symlink_')
+        self.runner = ProotRunner(cache_dir=self.test_dir)
+        self.rootfs_dir = os.path.join(self.test_dir, 'rootfs')
+        os.makedirs(os.path.join(self.rootfs_dir, 'bin'), exist_ok=True)
+        Path(os.path.join(self.rootfs_dir, 'bin', 'sh')).touch()
+        self.runner.rootfs_dir = self.rootfs_dir
+
+        self._orig_android = self.runner._is_android_environment
+        self.runner._is_android_environment = lambda: True
+
+        self._orig_env = os.environ.get(self.runner.LINK2SYMLINK_ENV)
+        self._orig_supports = self.runner._proot_supports_link2symlink
+        self.runner._proot_supports_link2symlink = lambda: True
+
+        class Args:
+            detach = False
+            bind = []
+            workdir = None
+            env = []
+            command = []
+            fake_root = None
+
+        self.Args = Args
+
+    def tearDown(self):
+        self.runner._is_android_environment = self._orig_android
+        self.runner._proot_supports_link2symlink = self._orig_supports
+
+        if self._orig_env is None:
+            os.environ.pop(self.runner.LINK2SYMLINK_ENV, None)
+        else:
+            os.environ[self.runner.LINK2SYMLINK_ENV] = self._orig_env
+
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+    def test_android_defaults_to_link2symlink_when_supported(self):
+        os.environ.pop(self.runner.LINK2SYMLINK_ENV, None)
+        cmd = self.runner._build_proot_command(self.Args())
+        self.assertIn('--link2symlink', cmd, "Android default should include proot --link2symlink when supported")
+
+    def test_escape_hatch_disables_link2symlink(self):
+        os.environ[self.runner.LINK2SYMLINK_ENV] = '0'
+        cmd = self.runner._build_proot_command(self.Args())
+        self.assertNotIn('--link2symlink', cmd, "Escape hatch should disable --link2symlink when set to 0")
 
 
 class TestCriticalFileValidation(unittest.TestCase):

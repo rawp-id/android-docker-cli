@@ -608,7 +608,16 @@ class DockerCLI:
             return False
 
         # Build exec command using proot
-        proot_cmd = ['proot', '-r', rootfs_dir]
+        proot_cmd = ['proot']
+
+        # Keep Android proot compatibility behavior consistent with `docker run`.
+        # `args` here is not the same type as proot_runner args; we only rely on env + android detection.
+        try:
+            proot_cmd.extend(self.runner._get_proot_compat_flags(args=None))
+        except Exception:
+            pass
+
+        proot_cmd.extend(['-r', rootfs_dir])
         
         # Add default binds
         default_binds = ['/dev', '/proc', '/sys']

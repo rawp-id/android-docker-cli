@@ -26,8 +26,13 @@ class ProotRunner:
     """使用proot运行容器的类，支持一条龙服务"""
 
     FAKE_ROOT_ENV = "ANDROID_DOCKER_FAKE_ROOT"
+    LINK2SYMLINK_ENV = "ANDROID_DOCKER_LINK2SYMLINK"
+    ENABLE_IMAGE_PATCHES_ENV = "ANDROID_DOCKER_ENABLE_IMAGE_PATCHES"
     DISABLE_SUPERVISOR_SOCKET_PATCH_ENV = "ANDROID_DOCKER_DISABLE_SUPERVISOR_SOCKET_PATCH"
     SUPERVISORD_INET_PORT = "127.0.0.1:9001"
+
+    _cached_proot_help_text = None
+    _cached_proot_supports_link2symlink = None
 
     def __init__(self, cache_dir=None):
         self.temp_dir = None
@@ -378,10 +383,8 @@ class ProotRunner:
         """构建proot命令（增强Android支持）"""
         cmd = ['proot']
 
-        # Android/Termux compatibility: default to proot fake-root semantics so images that
-        # assume "start as root then drop privileges" behave closer to Docker defaults.
-        if self._resolve_fake_root(args):
-            cmd.append('-0')
+        # Android/Termux compatibility flags.
+        cmd.extend(self._get_proot_compat_flags(args))
 
         # 基本选项
         cmd.extend(['-r', self.rootfs_dir])
@@ -511,6 +514,71 @@ class ProotRunner:
         if parsed is None:
             return True
         return parsed
+
+    def _get_proot_help_text(self):
+        """Return cached `proot --help` output (best-effort)."""
+        if ProotRunner._cached_proot_help_text is not None:
+            return ProotRunner._cached_proot_help_text
+
+        try:
+            result = subprocess.run(
+                ['proot', '--help'],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            text = (result.stdout or "") + "\n" + (result.stderr or "")
+        except Exception:
+            text = ""
+
+        ProotRunner._cached_proot_help_text = text
+        return text
+
+    def _proot_supports_link2symlink(self):
+        """Detect whether this proot build supports `--link2symlink`."""
+        if ProotRunner._cached_proot_supports_link2symlink is not None:
+            return ProotRunner._cached_proot_supports_link2symlink
+
+        help_text = self._get_proot_help_text()
+        supported = "link2symlink" in (help_text or "")
+        ProotRunner._cached_proot_supports_link2symlink = supported
+        return supported
+
+    def _resolve_link2symlink(self):
+        """Return whether to enable proot `--link2symlink` for Android runs.
+
+        This is a broadly applicable workaround for Android/Termux hard-link restrictions.
+        Default: enabled on Android if the proot build supports it.
+        Escape hatch: ANDROID_DOCKER_LINK2SYMLINK=0
+        """
+        if not self._is_android_environment():
+            return False
+
+        parsed = self._parse_env_bool(os.environ.get(self.LINK2SYMLINK_ENV))
+        if parsed is False:
+            return False
+
+        # Default enabled, but only if supported by the installed proot.
+        if parsed is None or parsed is True:
+            return self._proot_supports_link2symlink()
+
+        return False
+
+    def _get_proot_compat_flags(self, args=None):
+        """Flags added before `-r rootfs` to improve Android/Termux compatibility."""
+        flags = []
+
+        # Default to proot fake-root semantics so images that assume "start as root then drop
+        # privileges" behave closer to Docker defaults.
+        if self._resolve_fake_root(args):
+            flags.append('-0')
+
+        # Emulate hardlinks using symlinks when possible. This avoids common loops/hangs in
+        # images that rely on os.link() for atomic unix socket creation (e.g. supervisord).
+        if self._resolve_link2symlink():
+            flags.append('--link2symlink')
+
+        return flags
 
     def _create_startup_script(self, env_vars, command):
         """创建启动脚本来设置环境变量和执行命令"""
@@ -748,6 +816,10 @@ class ProotRunner:
         supervisord can start without relying on hardlinks for unix socket creation.
         """
         if not self._is_android_environment():
+            return
+
+        # Image config patching is opt-in; prefer proot-level compatibility flags.
+        if self._parse_env_bool(os.environ.get(self.ENABLE_IMAGE_PATCHES_ENV)) is not True:
             return
 
         if self._parse_env_bool(os.environ.get(self.DISABLE_SUPERVISOR_SOCKET_PATCH_ENV)) is True:
