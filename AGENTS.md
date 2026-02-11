@@ -29,6 +29,7 @@ When the user provides a production bug report for Android/Termux behavior, foll
    - Fix validation phase: `deploy_expect=fixed`
    - Execute via README install path and installed `docker` / `docker-compose` commands (avoid direct `python -m` for deploy replay).
    - Use `docker-compose up -d` + container logs and container state snapshots (`docker ps -a`) for assertion, then `docker-compose down` cleanup.
+   - Do not treat `created` as runtime-ready; collect final evidence only after observing `running` or `exited`.
 5. Upload and inspect artifacts/logs for every run before concluding.
 
 Progressive disclosure:

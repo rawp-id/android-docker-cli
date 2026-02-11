@@ -262,12 +262,28 @@ jobs:
             printf 't=%ss state=%s exit=%s logs_code=%s logs_nonempty=%s\n' \
               "${SECONDS}" "${container_state}" "unknown" "${logs_code}" "${have_runtime_logs}" >> "$CONTAINER_STATE_LOG"
 
-            if [ "${container_state}" != "missing" ] && \
-               { [ "${have_runtime_logs}" -eq 1 ] || [ "${container_state}" = "exited" ]; }; then
+            # Do not exit early on "created" + non-empty startup logs.
+            # Require observing running or exited to claim runtime evidence.
+            if [ "${container_state}" = "exited" ] || \
+               { [ "${running_observed}" -eq 1 ] && [ "${have_runtime_logs}" -eq 1 ]; }; then
               break
             fi
             sleep 2
           done
+
+          # Refresh one last snapshot after wait loop for more accurate reporting.
+          docker ps -a >"$CONTAINER_PS_LOG" 2>&1 || true
+          container_state="$(awk -v cid="$SERVICE_CONTAINER" '$1==cid {print $NF; exit}' "$CONTAINER_PS_LOG" 2>/dev/null)"
+          if [ -z "$container_state" ]; then
+            container_state="missing"
+          fi
+          docker logs "$SERVICE_CONTAINER" >"$CONTAINER_LOG" 2>&1 || true
+          if [ "$container_state" = "running" ]; then
+            running_observed=1
+          fi
+          if [ -s "$CONTAINER_LOG" ]; then
+            have_runtime_logs=1
+          fi
 
           if command -v timeout >/dev/null 2>&1; then
             timeout --kill-after=10s 60s docker-compose -f "$COMPOSE_FILE" down >"$DOWN_LOG" 2>&1
