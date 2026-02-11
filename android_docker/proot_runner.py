@@ -27,6 +27,7 @@ class ProotRunner:
 
     FAKE_ROOT_ENV = "ANDROID_DOCKER_FAKE_ROOT"
     DISABLE_SUPERVISOR_SOCKET_PATCH_ENV = "ANDROID_DOCKER_DISABLE_SUPERVISOR_SOCKET_PATCH"
+    SUPERVISORD_INET_PORT = "127.0.0.1:9001"
 
     def __init__(self, cache_dir=None):
         self.temp_dir = None
@@ -737,14 +738,14 @@ class ProotRunner:
         return env
 
     def _maybe_patch_supervisord_socket(self, rootfs_dir):
-        """Android compatibility: disable supervisord unix socket sections when needed.
+        """Android compatibility: patch supervisord unix socket config to avoid hardlink behavior.
 
         Some images (including those using Python supervisor) create unix domain sockets via a
         hard-link strategy (os.link). On Android/Termux this can fail due to hard-link restrictions,
         causing supervisord to loop printing "Unlinking stale socket ...".
 
-        This patch comments out [unix_http_server] and [supervisorctl] sections in supervisord.conf
-        so supervisord can still manage programs without creating a control socket.
+        Preferred workaround: convert unix_http_server to inet_http_server on 127.0.0.1 so
+        supervisord can start without relying on hardlinks for unix socket creation.
         """
         if not self._is_android_environment():
             return
@@ -766,33 +767,62 @@ class ProotRunner:
 
             try:
                 with open(config_path, 'r', encoding='utf-8', errors='ignore') as handle:
-                    original = handle.read().splitlines(True)  # keep line endings
+                    original_lines = handle.read().splitlines()
             except OSError:
                 continue
 
             # Fast check: only patch configs that define a unix socket control interface.
-            content_joined = ''.join(original)
-            if '[unix_http_server]' not in content_joined:
+            if not any(line.strip() == '[unix_http_server]' for line in original_lines):
                 continue
-            if 'supervisor.sock' not in content_joined:
+            if not any('supervisor.sock' in line for line in original_lines):
+                continue
+            # If inet server already exists, or supervisorctl already uses http, don't touch it.
+            if any(line.strip() == '[inet_http_server]' for line in original_lines):
+                continue
+            if any(line.strip().startswith('serverurl=http') for line in original_lines):
                 continue
 
+            port = self.SUPERVISORD_INET_PORT
             changed = False
             patched = []
-            current_section = None
+            in_unix = False
+            in_supervisorctl = False
+            inserted_inet = False
 
-            for line in original:
+            def maybe_insert_inet():
+                nonlocal inserted_inet, changed
+                if inserted_inet:
+                    return
+                patched.append('[inet_http_server]')
+                patched.append(f'port={port}')
+                patched.append('')
+                inserted_inet = True
+                changed = True
+
+            for line in original_lines:
                 stripped = line.strip()
+
                 if stripped.startswith('[') and stripped.endswith(']') and len(stripped) > 2:
-                    current_section = stripped[1:-1].strip().lower()
+                    in_supervisorctl = (stripped.lower() == '[supervisorctl]')
+                    if stripped.lower() == '[unix_http_server]':
+                        in_unix = True
+                        changed = True
+                        continue
+                    if in_unix:
+                        in_unix = False
 
-                in_disabled_section = current_section in ('unix_http_server', 'supervisorctl')
+                    if stripped.lower() == '[supervisorctl]':
+                        maybe_insert_inet()
 
-                if in_disabled_section and stripped and not stripped.startswith(('#', ';')):
-                    patched.append(';' + line)
+                if in_unix:
+                    continue
+
+                if in_supervisorctl and stripped.startswith('serverurl=unix://'):
+                    patched.append(f'serverurl=http://{port}')
                     changed = True
-                else:
-                    patched.append(line)
+                    continue
+
+                patched.append(line)
 
             if not changed:
                 continue
@@ -802,14 +832,14 @@ class ProotRunner:
             try:
                 if not os.path.exists(backup_path):
                     with open(backup_path, 'w', encoding='utf-8', errors='ignore') as handle:
-                        handle.write(''.join(original))
+                        handle.write('\n'.join(original_lines) + '\n')
             except OSError:
                 pass
 
             try:
                 with open(config_path, 'w', encoding='utf-8', errors='ignore') as handle:
-                    handle.write(''.join(patched))
-                logger.info(f"Android兼容: 已禁用supervisord unix socket配置: {config_path}")
+                    handle.write('\n'.join(patched) + '\n')
+                logger.info(f"Android兼容: 已将supervisord unix socket改为inet_http_server: {config_path}")
             except OSError:
                 pass
 

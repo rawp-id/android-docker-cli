@@ -1,7 +1,7 @@
-# Release v1.2.10 - Supervisord Unix Socket Workaround (Android)
+# Release v1.2.10 - Supervisord Unix Socket Compatibility
 
-- Work around Android/Termux hard-link restrictions that can cause `supervisord` to loop printing `Unlinking stale socket /var/run/supervisor.sock`.
-- On Android/Termux, automatically comment out `[unix_http_server]` and `[supervisorctl]` sections in `/etc/supervisord.conf` (when present) so `supervisord` can still manage programs without creating a unix control socket.
+- Improve Android/Termux compatibility for images that use `supervisord` with a unix control socket (`/var/run/supervisor.sock`).
+- On Android, automatically patch `supervisord.conf` to use `inet_http_server` on `127.0.0.1:9001` instead of `unix_http_server`, avoiding hard-link based socket creation loops like `Unlinking stale socket /var/run/supervisor.sock`.
 
 Install:
 ```bash

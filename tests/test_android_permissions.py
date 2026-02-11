@@ -304,10 +304,10 @@ class TestAndroidSupervisordSocketPatch(unittest.TestCase):
         self.runner._maybe_patch_supervisord_socket(self.rootfs_dir)
 
         patched = Path(conf_path).read_text(encoding='utf-8')
-        self.assertIn(";[supervisorctl]", patched)
-        self.assertIn(";serverurl=unix:///var/run/supervisor.sock", patched)
-        self.assertIn(";[unix_http_server]", patched)
-        self.assertIn(";file=/var/run/supervisor.sock", patched)
+        self.assertNotIn("[unix_http_server]", patched)
+        self.assertIn("[inet_http_server]", patched)
+        self.assertIn("port=127.0.0.1:9001", patched)
+        self.assertIn("serverurl=http://127.0.0.1:9001", patched)
 
     def test_can_disable_patch_via_env(self):
         conf_path = os.path.join(self.rootfs_dir, 'etc', 'supervisord.conf')
