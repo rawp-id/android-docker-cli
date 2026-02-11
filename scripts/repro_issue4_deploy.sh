@@ -45,13 +45,17 @@ echo "Timeout: ${REPRO_TIMEOUT_SECONDS}s"
 
 set +e
 if command -v timeout >/dev/null 2>&1; then
-  timeout "${REPRO_TIMEOUT_SECONDS}s" \
-    python -m android_docker.docker_compose_cli --cache-dir "$CACHE_DIR" -f "$COMPOSE_FILE" up 2>&1 | tee "$LOG_FILE"
+  timeout --kill-after=20s "${REPRO_TIMEOUT_SECONDS}s" \
+    python -m android_docker.docker_compose_cli --cache-dir "$CACHE_DIR" -f "$COMPOSE_FILE" up >"$LOG_FILE" 2>&1
 else
-  python -m android_docker.docker_compose_cli --cache-dir "$CACHE_DIR" -f "$COMPOSE_FILE" up 2>&1 | tee "$LOG_FILE"
+  python -m android_docker.docker_compose_cli --cache-dir "$CACHE_DIR" -f "$COMPOSE_FILE" up >"$LOG_FILE" 2>&1
 fi
-exit_code=${PIPESTATUS[0]}
+exit_code=$?
 set -e
+
+echo "---- deploy log (tail -n 120) ----"
+tail -n 120 "$LOG_FILE" || true
+echo "---- end deploy log ----"
 
 if grep -q "proot error: '/bin/bash' is not executable" "$LOG_FILE"; then
   echo "REPRODUCED: found target error in logs."

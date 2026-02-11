@@ -172,12 +172,17 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          bash scripts/repro_issue4_deploy.sh 2>&1 | tee artifacts/deploy-repro.stdout.log
-          code=${PIPESTATUS[0]}
+          if command -v timeout >/dev/null 2>&1; then
+            timeout --kill-after=30s 7m bash scripts/repro_issue4_deploy.sh > artifacts/deploy-repro.stdout.log 2>&1
+          else
+            bash scripts/repro_issue4_deploy.sh > artifacts/deploy-repro.stdout.log 2>&1
+          fi
+          code=$?
           set -e
 
           expected="${{ inputs.deploy_expect }}"
           echo "deploy script exit code: ${code}, expected: ${expected}"
+          tail -n 120 artifacts/deploy-repro.stdout.log || true
 
           if [ "${expected}" = "reproduced" ] && [ "${code}" -eq 0 ]; then
             echo "Result matches expectation: issue reproduced."
