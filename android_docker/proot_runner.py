@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-使用proot运行Docker镜像的一条龙服务脚本
-支持直接输入镜像URL，自动拉取、制作根文件系统、启动容器
-支持类似Docker的命令行参数和环境变量，包含镜像缓存功能
+One-stop service script for running Docker images with proot
+Supports direct image URL input, automatic pulling, rootfs creation, and container startup
+Supports Docker-like command-line arguments and environment variables, includes image caching functionality
 """
 
 import os
@@ -19,12 +19,12 @@ import time
 import ipaddress
 from pathlib import Path
 
-# 配置日志
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class ProotRunner:
-    """使用proot运行容器的类，支持一条龙服务"""
+    """Class for running containers with proot, supports one-stop service"""
 
     FAKE_ROOT_ENV = "ANDROID_DOCKER_FAKE_ROOT"
     LINK2SYMLINK_ENV = "ANDROID_DOCKER_LINK2SYMLINK"
@@ -45,40 +45,40 @@ class ProotRunner:
         self._ensure_cache_dir()
 
     def _get_default_cache_dir(self):
-        """获取默认缓存目录"""
-        # 在用户主目录下创建缓存
+        """Get default cache directory"""
+        # Create cache in user's home directory
         home_dir = os.path.expanduser('~')
         cache_dir = os.path.join(home_dir, '.proot_runner_cache')
         return cache_dir
 
     def _ensure_cache_dir(self):
-        """确保缓存目录存在"""
+        """Ensure cache directory exists"""
         os.makedirs(self.cache_dir, exist_ok=True)
-        logger.debug(f"缓存目录: {self.cache_dir}")
+        logger.debug(f"Cache directory: {self.cache_dir}")
 
     def _get_image_cache_path(self, image_url):
-        """根据镜像URL生成缓存路径"""
-        # 使用镜像URL的hash作为缓存文件名
+        """Generate cache path based on image URL"""
+        # Use hash of image URL as cache filename
         url_hash = hashlib.sha256(image_url.encode()).hexdigest()[:16]
 
-        # 提取镜像名称作为可读部分
+        # Extract image name as readable part
         image_name = image_url.split('/')[-1].split(':')[0]
         cache_filename = f"{image_name}_{url_hash}.tar.gz"
 
         return os.path.join(self.cache_dir, cache_filename)
 
     def _is_image_cached(self, image_url):
-        """检查镜像是否已缓存"""
+        """Check if image is cached"""
         cache_path = self._get_image_cache_path(image_url)
         return os.path.exists(cache_path)
 
     def _get_cache_info_path(self, image_url):
-        """获取缓存信息文件路径"""
+        """Get cache info file path"""
         cache_path = self._get_image_cache_path(image_url)
         return cache_path + '.info'
 
     def _save_cache_info(self, image_url, cache_path):
-        """保存缓存信息"""
+        """Save cache info"""
         info = {
             'image_url': image_url,
             'cache_path': cache_path,
@@ -91,31 +91,31 @@ class ProotRunner:
             json.dump(info, f, indent=2)
 
     def _load_cache_info(self, image_url):
-        """加载缓存信息"""
+        """Load cache info"""
         info_path = self._get_cache_info_path(image_url)
         if os.path.exists(info_path):
             try:
                 with open(info_path, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                logger.warning(f"读取缓存信息失败: {e}")
+                logger.warning(f"Failed to read cache info: {e}")
         return None
 
     def _download_image(self, image_url, force_download=False, username=None, password=None):
-        """下载镜像到缓存"""
+        """Download image to cache"""
         cache_path = self._get_image_cache_path(image_url)
 
-        # 检查缓存
+        # Checking cache
         if not force_download and self._is_image_cached(image_url):
             cache_info = self._load_cache_info(image_url)
             if cache_info:
-                logger.info(f"使用缓存的镜像: {cache_path}")
-                logger.info(f"缓存创建时间: {cache_info.get('created_time_str', 'Unknown')}")
+                logger.info(f"Using cached image: {cache_path}")
+                logger.info(f"Cache creation time: {cache_info.get('created_time_str', 'Unknown')}")
                 return cache_path
 
-        logger.info(f"下载镜像: {image_url}")
+        logger.info(f"Downloading image: {image_url}")
 
-        # 调用create_rootfs_tar.py脚本
+        # Calling create_rootfs_tar.py script
         cmd = [
             sys.executable,
             '-m', 'android_docker.create_rootfs_tar',
@@ -126,7 +126,7 @@ class ProotRunner:
         if password:
             cmd.extend(['--password', password])
         
-        # 获取并传递代理参数
+        # Get and pass proxy parameters
         proxy = os.environ.get('https_proxy') or os.environ.get('HTTPS_PROXY')
         if proxy:
             cmd.extend(['--proxy', proxy])
@@ -135,44 +135,44 @@ class ProotRunner:
 
         try:
             subprocess.run(cmd, check=True)
-            logger.info(f"镜像已下载并缓存: {cache_path}")
+            logger.info(f"Image downloaded and cached: {cache_path}")
 
-            # 保存缓存信息
+            # Save cache info
             self._save_cache_info(image_url, cache_path)
 
             return cache_path
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"下载镜像失败: {e}")
+            logger.error(f"Image download failed: {e}")
             return None
 
     def _is_image_url(self, input_str):
-        """判断输入是否为镜像URL"""
-        # 简单的启发式判断
+        """Determine if input is an image URL"""
+        # Simple heuristic check
         url_indicators = [
-            '/' in input_str and ':' in input_str,  # 包含registry和tag
-            input_str.count('/') >= 1,  # 至少有一个斜杠
-            not input_str.endswith('.tar'),  # 不是tar文件
-            not input_str.endswith('.tar.gz'),  # 不是tar.gz文件
-            not os.path.exists(input_str)  # 不是本地文件/目录
+            '/' in input_str and ':' in input_str,  # Contains registry and tag
+            input_str.count('/') >= 1,  # At least one slash
+            not input_str.endswith('.tar'),  # Not a tar file
+            not input_str.endswith('.tar.gz'),  # Not a tar.gz file
+            not os.path.exists(input_str)  # Not a local file/directory
         ]
 
         return any(url_indicators)
 
     def _prepare_rootfs(self, input_path, args, provided_rootfs_dir=None):
-        """准备根文件系统（下载或使用现有）"""
+        """Prepare rootfs (download or use existing)"""
         
-        # 对于重启操作，如果持久化目录已存在且非空，则直接使用
+        # For restart operation, if persistent directory exists and is non-empty, use it directly
         if provided_rootfs_dir and os.path.exists(provided_rootfs_dir) and os.listdir(provided_rootfs_dir):
-            logger.info(f"使用现有的持久化根文件系统: {provided_rootfs_dir}")
+            logger.info(f"Using existing persistent rootfs: {provided_rootfs_dir}")
             self.rootfs_dir = provided_rootfs_dir
             self.temp_dir = None # We are not managing a temporary directory
             return self.rootfs_dir
 
-        # 否则，执行正常的下载和解压逻辑
+        # Otherwise, execute normal download and extract logic
         if self._is_image_url(input_path):
-            # 这是一个镜像URL，需要下载
-            logger.info(f"检测到镜像URL: {input_path}")
+            # This is an image URL, needs download
+            logger.info(f"Detected image URL: {input_path}")
             cache_path = self._download_image(
                 input_path,
                 force_download=getattr(args, 'force_download', False),
@@ -183,63 +183,63 @@ class ProotRunner:
                 return None
             return self._extract_rootfs_if_needed(cache_path, provided_rootfs_dir=provided_rootfs_dir)
         else:
-            # 这是本地文件或目录
-            logger.info(f"使用本地根文件系统: {input_path}")
+            # This is a local file or directory
+            logger.info(f"Using local rootfs: {input_path}")
             return self._extract_rootfs_if_needed(input_path, provided_rootfs_dir=provided_rootfs_dir)
         
     def _check_dependencies(self):
-        """检查必要的依赖是否已安装"""
-        # 检查proot
+        """Check if necessary dependencies are installed"""
+        # Check proot
         try:
             subprocess.run(['proot', '--version'],
                          capture_output=True, check=True)
-            logger.info("✓ proot 已安装")
+            logger.info("✓ proot installed")
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.error("✗ proot 未安装")
-            logger.info("请安装proot: pkg install proot (Termux) 或 apt install proot")
+            logger.error("✗ proot not installed")
+            logger.info("Please install proot: pkg install proot (Termux) or apt install proot")
             return False
 
-        # 检查create_rootfs_tar.py脚本
+        # Check create_rootfs_tar.py script
         # Since we are using `python -m`, we don't need to check for the script path here.
         # The python interpreter will find the module.
         logger.info("✓ create_rootfs_tar.py module is available")
 
-        # 检查curl（create_rootfs_tar.py需要）
+        # Check curl (required by create_rootfs_tar.py)
         try:
             subprocess.run(['curl', '--version'],
                          capture_output=True, check=True)
-            logger.info("✓ curl 已安装")
+            logger.info("✓ curl installed")
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.error("✗ curl 未安装")
-            logger.info("请安装curl: pkg install curl (Termux) 或 apt install curl")
+            logger.error("✗ curl not installed")
+            logger.info("Please install curl: pkg install curl (Termux) or apt install curl")
             return False
 
-        # 检查tar
+        # Check tar
         try:
             subprocess.run(['tar', '--version'],
                          capture_output=True, check=True)
-            logger.info("✓ tar 已安装")
+            logger.info("✓ tar installed")
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.error("✗ tar 未安装")
-            logger.info("请安装tar: pkg install tar (Termux) 或 apt install tar")
+            logger.error("✗ tar not installed")
+            logger.info("Please install tar: pkg install tar (Termux) or apt install tar")
             return False
 
         return True
     
     def _extract_rootfs_if_needed(self, rootfs_path, provided_rootfs_dir=None):
-        """如果输入是tar文件，则解压到指定目录"""
+        """If input is a tar file, extract to specified directory"""
 
-        # 1. 如果输入不是tar文件，按旧逻辑处理
+        # 1. If inputNot a tar file，handle with old logic
         if not (rootfs_path.endswith('.tar') or rootfs_path.endswith('.tar.gz')):
             if os.path.isdir(rootfs_path):
                 self.rootfs_dir = os.path.abspath(rootfs_path)
-                logger.info(f"使用现有根文件系统目录: {self.rootfs_dir}")
+                logger.info(f"Using existing rootfs directory: {self.rootfs_dir}")
                 return self.rootfs_dir
             else:
-                logger.error(f"无效的根文件系统路径: {rootfs_path}")
+                logger.error(f"Invalid rootfs path: {rootfs_path}")
                 return None
 
-        # 2. 确定解压目标目录
+        # 2. Determine extract target directory
         is_temp = False
         if provided_rootfs_dir:
             target_dir = provided_rootfs_dir
@@ -252,8 +252,8 @@ class ProotRunner:
         self.rootfs_dir = target_dir
         os.makedirs(self.rootfs_dir, exist_ok=True)
 
-        # 3. 解压tar文件
-        logger.info(f"检测到tar文件，正在解压: {rootfs_path} -> {self.rootfs_dir}")
+        # 3. Extract tar file
+        logger.info(f"Detected tar file, extracting: {rootfs_path} -> {self.rootfs_dir}")
         if rootfs_path.endswith('.tar.gz'):
             cmd = ['tar', '-xzf', rootfs_path, '-C', self.rootfs_dir]
         else:
@@ -261,17 +261,17 @@ class ProotRunner:
         
         try:
             subprocess.run(cmd, check=True)
-            logger.info(f"根文件系统已解压到: {self.rootfs_dir}")
+            logger.info(f"Rootfs extracted to: {self.rootfs_dir}")
             return self.rootfs_dir
         except subprocess.CalledProcessError as e:
-            logger.error(f"解压失败: {e}")
+            logger.error(f"Extract failed: {e}")
             if is_temp:
                 self._cleanup()
             return None
     
     def _find_image_config(self):
-        """查找镜像配置信息"""
-        # 尝试从多个可能的位置查找配置
+        """Find image config information"""
+        # Try to find config from multiple possible locations
         config_paths = [
             os.path.join(self.rootfs_dir, '.image_config.json'),
             os.path.join(self.rootfs_dir, 'image_config.json'),
@@ -283,77 +283,77 @@ class ProotRunner:
                 try:
                     with open(config_path, 'r') as f:
                         self.config_data = json.load(f)
-                    logger.info(f"找到镜像配置: {config_path}")
+                    logger.info(f"Found image config: {config_path}")
                     return True
                 except Exception as e:
-                    logger.warning(f"读取配置文件失败 {config_path}: {e}")
+                    logger.warning(f"Failed to read config file {config_path}: {e}")
         
-        logger.info("未找到镜像配置文件，将使用默认设置")
+        logger.info("Image config file not found, will use default settings")
         return False
     
     def _get_default_command(self):
-        """获取默认启动命令"""
+        """Get default startup command"""
         if self.config_data:
-            # 从配置中获取CMD或ENTRYPOINT
+            # Get CMD or ENTRYPOINT from config
             config = self.config_data.get('config', {})
 
-            # 优先使用Entrypoint + Cmd
+            # Prefer Entrypoint + Cmd
             entrypoint = config.get('Entrypoint', [])
             cmd = config.get('Cmd', [])
 
-            logger.debug(f"镜像配置 - Entrypoint: {entrypoint}, Cmd: {cmd}")
+            logger.debug(f"Image config - Entrypoint: {entrypoint}, Cmd: {cmd}")
 
             if entrypoint:
                 if cmd:
                     result = entrypoint + cmd
-                    logger.info(f"使用镜像默认命令: Entrypoint + Cmd = {result}")
+                    logger.info(f"Using image default command: Entrypoint + Cmd = {result}")
                     return result
                 else:
-                    logger.info(f"使用镜像默认命令: Entrypoint = {entrypoint}")
+                    logger.info(f"Using image default command: Entrypoint = {entrypoint}")
                     return entrypoint
             elif cmd:
-                logger.info(f"使用镜像默认命令: Cmd = {cmd}")
+                logger.info(f"Using image default command: Cmd = {cmd}")
                 return cmd
 
-        # 默认命令 - 查找可用的shell
-        logger.warning("镜像配置中没有找到Entrypoint或Cmd，使用默认shell")
+        # Default command - find available shell
+        logger.warning("Entrypoint or Cmd not found in image config, using default shell")
         default_shells = ['/bin/bash', '/bin/sh', '/bin/ash', '/bin/dash']
         for shell in default_shells:
             shell_path = os.path.join(self.rootfs_dir, shell.lstrip('/'))
             if os.path.exists(shell_path):
-                logger.debug(f"找到可用shell: {shell}")
+                logger.debug(f"Found available shell: {shell}")
                 return [shell]
 
-        # 如果没有找到shell，尝试busybox
+        # If no shell found, try busybox
         busybox_path = os.path.join(self.rootfs_dir, 'bin/busybox')
         if os.path.exists(busybox_path):
-            logger.debug("使用busybox shell")
+            logger.debug("Using busybox shell")
             return ['/bin/busybox', 'sh']
 
-        logger.warning("未找到可用的shell，使用默认/bin/sh")
-        return ['/bin/sh']  # 最后的备选
+        logger.warning("No available shell found, using default /bin/sh")
+        return ['/bin/sh']  # Last fallback
 
     def _get_available_shell(self):
-        """获取可用的shell路径（用于执行脚本）"""
-        # 查找可用的shell
+        """Get available shell path (for script execution)"""
+        # Find available shell
         default_shells = ['/bin/bash', '/bin/sh', '/bin/ash', '/bin/dash']
         for shell in default_shells:
             shell_path = os.path.join(self.rootfs_dir, shell.lstrip('/'))
             if os.path.exists(shell_path):
-                logger.debug(f"找到可用shell用于执行脚本: {shell}")
+                logger.debug(f"Found available shell for script execution: {shell}")
                 return shell
 
-        # 如果没有找到shell，尝试busybox
+        # If no shell found, try busybox
         busybox_path = os.path.join(self.rootfs_dir, 'bin/busybox')
         if os.path.exists(busybox_path):
-            logger.debug("使用busybox shell执行脚本")
+            logger.debug("Using busybox shellfor script execution")
             return '/bin/busybox'
 
-        logger.warning("未找到可用的shell执行脚本")
+        logger.warning("No available shell found for script execution")
         return None
 
     def _get_default_env(self):
-        """获取默认环境变量"""
+        """Get default environment variables"""
         env_vars = {}
         
         if self.config_data:
@@ -365,7 +365,7 @@ class ProotRunner:
                     key, value = env_str.split('=', 1)
                     env_vars[key] = value
         
-        # 添加一些基本的环境变量
+        # Add some basic environment variables
         env_vars.setdefault('PATH', '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin')
         env_vars.setdefault('HOME', '/root')
         env_vars.setdefault('TERM', 'xterm')
@@ -373,7 +373,7 @@ class ProotRunner:
         return env_vars
     
     def _get_working_directory(self):
-        """获取工作目录"""
+        """Get working directory"""
         if self.config_data:
             config = self.config_data.get('config', {})
             workdir = config.get('WorkingDir')
@@ -383,36 +383,36 @@ class ProotRunner:
         return '/'
     
     def _build_proot_command(self, args):
-        """构建proot命令（增强Android支持）"""
+        """Build proot command (enhanced Android support)"""
         cmd = ['proot']
         self._container_env_overrides = {}
 
         # Android/Termux compatibility flags.
         cmd.extend(self._get_proot_compat_flags(args))
 
-        # 基本选项
+        # Basic options
         cmd.extend(['-r', self.rootfs_dir])
 
-        # 如果是后台运行，禁用TTY，并指定PID文件
+        # If running in background, disable TTY and specify PID file
         if args.detach:
             # This block is now empty as proot doesn't support pid file args
             pass
 
-        # 绑定挂载
+        # Bind mounts
         default_binds = [
             '/dev',
             '/proc',
             '/sys'
         ]
 
-        # 在Android/Termux中添加额外的绑定
+        # Add extra binds in Android/Termux
         if self._is_android_environment():
             default_binds.extend([
                 '/sdcard',
             ])
 
-            # 添加可写系统目录绑定
-            # 使用rootfs_dir作为container_dir来存储可写目录
+            # Add writable system directory binds
+            # Use rootfs_dir as container_dir to store writable directories
             if self.rootfs_dir:
                 writable_binds = self._prepare_writable_directories(self.rootfs_dir)
                 default_binds.extend(writable_binds)
@@ -422,7 +422,7 @@ class ProotRunner:
                 resolv_bind = self._prepare_android_resolv_bind(self.rootfs_dir)
                 if resolv_bind:
                     default_binds.append(resolv_bind)
-                logger.info("已启用Android可写目录支持")
+                logger.info("Android writable directory support enabled")
 
         for bind in default_binds:
             if ':' in bind:
@@ -433,47 +433,47 @@ class ProotRunner:
                 if os.path.exists(bind):
                     cmd.extend(['-b', bind])
 
-        # 用户指定的绑定挂载
+        # User-specifiedBind mounts
         for bind in args.bind:
             cmd.extend(['-b', bind])
 
-        # 工作目录
+        # Working directory
         workdir = args.workdir or self._get_working_directory()
         cmd.extend(['-w', workdir])
 
-        # 环境变量
+        # Environment variables
         env_vars = self._get_default_env()
 
-        # 添加用户指定的环境变量
+        # AddUser-specifiedEnvironment variables
         for env in args.env:
             if '=' in env:
                 key, value = env.split('=', 1)
                 env_vars[key] = value
 
-        # 如果是后台运行，强制设置TERM为dumb，避免交互式行为
+        # If running in background, force set TERM to dumb to avoid interactive behavior
         if args.detach:
             env_vars['TERM'] = 'dumb'
 
-        # proot不支持-E选项，需要通过其他方式设置环境变量
-        # 我们将通过修改启动命令来设置环境变量
+        # proot doesn't support -E option, need to set environment variables another way
+        # We will set environment variables by modifying startup command
 
-        # 构建最终的执行命令
+        # Build final execution command
         if args.command:
             final_command = args.command
-            logger.info(f"使用用户指定的命令: {final_command}")
+            logger.info(f"Using user-specified command: {final_command}")
         else:
             default_cmd = self._get_default_command()
             final_command = default_cmd
-            logger.debug(f"使用默认命令: {final_command}")
+            logger.debug(f"Using default command: {final_command}")
 
-        # 创建启动脚本来设置环境变量
+        # Create startup script to setEnvironment variables
         if env_vars or self._is_android_environment():
-            # 获取可用的shell来执行启动脚本
+            # Get available shell to execute startup script
             available_shell = self._get_available_shell()
             if available_shell:
                 startup_script = self._create_startup_script(env_vars, final_command, available_shell=available_shell)
 
-                # 如果是busybox，需要添加sh参数
+                # If busybox, need to add sh argument
                 if available_shell == '/bin/busybox':
                     cmd.extend([available_shell, 'sh', startup_script])
                 else:
@@ -485,7 +485,7 @@ class ProotRunner:
                 self._container_env_overrides = {
                     key: value for key, value in env_vars.items() if key != 'PATH'
                 }
-                logger.warning("镜像内无可用shell，改为直接执行入口命令并通过宿主环境注入变量")
+                logger.warning("No available shell in image, executing entrypoint directly and injecting variables through host environment")
                 cmd.extend(final_command)
         else:
             cmd.extend(final_command)
@@ -597,55 +597,55 @@ class ProotRunner:
         return flags
 
     def _create_startup_script(self, env_vars, command, available_shell=None):
-        """创建启动脚本来设置环境变量和执行命令"""
-        # 获取可用的shell来作为脚本的shebang
+        """Create startup script to set environment variables and execute command"""
+        # Get available shell to use as script shebang
         if available_shell is None:
             available_shell = self._get_available_shell()
         if not available_shell:
-            raise RuntimeError("无法创建启动脚本：镜像中没有可用shell")
+            raise RuntimeError("Cannot create startup script: no available shell in image")
 
-        # 如果是busybox，需要特殊处理
+        # If busybox, need special handling
         if available_shell == '/bin/busybox':
             script_content = ['#!/bin/busybox sh']
         else:
             script_content = [f'#!{available_shell}']
 
-        # 添加环境变量设置
+        # AddEnvironment variablessettings
         for key, value in env_vars.items():
-            # 转义特殊字符
+            # Escape special characters
             escaped_value = value.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
             script_content.append(f'export {key}="{escaped_value}"')
 
-        # 在Android环境中添加特殊处理
+        # Add special handling in Android environment
         if self._is_android_environment():
             script_content.extend([
-                '# Android Termux 特殊处理',
-                'unset LD_PRELOAD'  # 取消termux-exec
+                '# Android Termux special handling',
+                'unset LD_PRELOAD'  # Disable termux-exec
             ])
 
-        # 添加执行命令
+        # Add execution command
         if len(command) >= 2 and command[0] == 'sh' and command[1] == '-c':
-            # 对于 'sh -c "command string"', 确保命令字符串被正确引用
+            # For 'sh -c "command string"', ensure command string is properly quoted
             quoted_command_str = shlex.quote(command[2])
             script_content.append(f'exec {command[0]} {command[1]} {quoted_command_str}')
         else:
             command_str = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in command)
             script_content.append(f'exec {command_str}')
 
-        # 写入临时脚本文件
+        # Write to temporary script file
         script_path = os.path.join(self.rootfs_dir, 'startup.sh')
         with open(script_path, 'w') as f:
             f.write('\n'.join(script_content) + '\n')
 
-        # 设置执行权限
+        # Set execute permissions
         os.chmod(script_path, 0o755)
 
-        logger.debug(f"创建启动脚本: {script_path}")
-        logger.debug(f"脚本内容:\n{chr(10).join(script_content)}")
+        logger.debug(f"Creating startup script: {script_path}")
+        logger.debug(f"Script content:\n{chr(10).join(script_content)}")
         return '/startup.sh'
     
     def _is_android_environment(self):
-        """检测是否在Android环境中运行（增强版）"""
+        """Detect if running in Android environment (enhanced version)"""
         android_indicators = [
             '/data/data/com.termux' in os.getcwd(),
             os.path.exists('/system/build.prop'),
@@ -658,7 +658,7 @@ class ProotRunner:
         is_android = any(android_indicators)
         
         if is_android:
-            logger.debug("检测到Android/Termux环境")
+            logger.debug("Detected Android/Termux environment")
         
         return is_android
 
@@ -681,11 +681,11 @@ class ProotRunner:
                 dirnames[:] = []
 
     def _prepare_writable_directories(self, rootfs_dir):
-        """为Android环境准备可写的系统目录"""
+        """Prepare writable system directories for Android environment"""
         if not self._is_android_environment():
             return []
 
-        # 需要可写的系统目录列表
+        # List of system directories that need to be writable
         writable_dirs = [
             'var/log',
             'var/cache',
@@ -695,9 +695,9 @@ class ProotRunner:
             'run',
         ]
 
-        # 在rootfs目录的同级创建writable_dirs目录
-        # 如果rootfs_dir是临时目录，writable_dirs也会在临时目录中
-        # 如果rootfs_dir是持久化目录，writable_dirs也会持久化
+        # Create writable_dirs directory at the same level as rootfs directory
+        # If rootfs_dir is a temporary directory, writable_dirs will also be in temporary directory
+        # If rootfs_dir is a persistent directory, writable_dirs will also be persistent
         parent_dir = os.path.dirname(rootfs_dir) if os.path.dirname(rootfs_dir) else rootfs_dir
         writable_storage = os.path.join(parent_dir, 'writable_dirs')
         os.makedirs(writable_storage, exist_ok=True)
@@ -709,16 +709,16 @@ class ProotRunner:
         shared_run_host_dir = os.path.join(writable_storage, 'run')
 
         for dir_path in writable_dirs:
-            # 创建主机侧的可写目录
+            # Create writable directory on host side
             if dir_path in ('run', 'var/run'):
                 host_dir = shared_run_host_dir
             else:
                 host_dir = os.path.join(writable_storage, dir_path.replace('/', '_'))
             os.makedirs(host_dir, exist_ok=True)
 
-            # 设置权限
+            # Set permissions
             try:
-                os.chmod(host_dir, 0o777)  # 完全可写
+                os.chmod(host_dir, 0o777)  # Fully writable
             except OSError:
                 pass
 
@@ -735,13 +735,13 @@ class ProotRunner:
 
             self._seed_writable_directory_structure(rootfs_dir, dir_path, host_dir)
 
-            # 添加到绑定挂载列表
+            # Add to bind mounts list
             container_path = f"/{dir_path}"
             bind_mounts.append(f"{host_dir}:{container_path}")
 
-            logger.debug(f"准备可写目录: {host_dir} -> {container_path}")
+            logger.debug(f"Preparing writable directory: {host_dir} -> {container_path}")
 
-        logger.info(f"已准备 {len(bind_mounts)} 个可写系统目录")
+        logger.info(f"Prepared {len(bind_mounts)} writable system directories")
         return bind_mounts
 
     def _prepare_android_hosts_bind(self, rootfs_dir):
@@ -889,7 +889,7 @@ class ProotRunner:
             add_servers(env_dns.replace(',', ' ').split())
         if not dns_servers:
             dns_servers = ['1.1.1.1']
-            logger.info("Android DNS固定为 1.1.1.1（可通过 ANDROID_DOCKER_DNS 覆盖）")
+            logger.info("Android DNS fixed to 1.1.1.1 (can be overridden via ANDROID_DOCKER_DNS)")
 
         lines = [f'nameserver {server}' for server in dns_servers]
 
@@ -907,21 +907,21 @@ class ProotRunner:
         return f"{host_resolv_path}:/etc/resolv.conf"
 
     def _prepare_environment(self):
-        """准备运行环境，处理Android Termux特殊问题"""
+        """Prepare runtime environment, handle Android Termux special issues"""
         env = os.environ.copy()
 
-        # 在Android Termux中，需要取消LD_PRELOAD以避免termux-exec干扰
+        # In Android Termux, need to unset LD_PRELOAD to avoid termux-exec interference
         if self._is_android_environment():
-            logger.info("检测到Android环境，调整环境变量...")
+            logger.info("Detected Android environment, adjusting environment variables...")
 
-            # 取消LD_PRELOAD
+            # Unset LD_PRELOAD
             if 'LD_PRELOAD' in env:
-                logger.debug("取消LD_PRELOAD以避免termux-exec干扰")
+                logger.debug("Unset LD_PRELOAD to avoid termux-exec interference")
                 del env['LD_PRELOAD']
 
-            # 设置更安全的PATH
+            # Set safer PATH
             termux_path = env.get('PATH', '')
-            # 移除可能导致问题的termux特定路径
+            # Remove termux-specific paths that may cause problems
             path_parts = termux_path.split(':')
             safe_paths = []
             for path in path_parts:
@@ -929,7 +929,7 @@ class ProotRunner:
                     safe_paths.append(path)
 
             env['PATH'] = ':'.join(safe_paths)
-            logger.debug(f"调整后的PATH: {env['PATH']}")
+            logger.debug(f"Adjusted PATH: {env['PATH']}")
 
         # Inject container env overrides when script-based env export is unavailable.
         for key, value in (self._container_env_overrides or {}).items():
@@ -1043,51 +1043,51 @@ class ProotRunner:
             try:
                 with open(config_path, 'w', encoding='utf-8', errors='ignore') as handle:
                     handle.write('\n'.join(patched) + '\n')
-                logger.info(f"Android兼容: 已将supervisord unix socket改为inet_http_server: {config_path}")
+                logger.info(f"Android compatibility: Changed supervisord unix socket to inet_http_server: {config_path}")
             except OSError:
                 pass
 
     def run(self, input_path, args, rootfs_dir=None, pid_file=None):
-        """运行容器（一条龙服务）"""
+        """Run container (one-stop service)"""
         log_file_handle = None
         try:
-            # 检查依赖
+            # Check dependencies
             if not self._check_dependencies():
                 return False
 
-            # 在Android环境中显示警告
+            # Show warning in Android environment
             if self._is_android_environment():
-                logger.warning("在Android环境中运行容器。注意：proot提供进程隔离，而非完整的容器化。某些系统调用可能不受支持，性能可能低于原生Docker。")
+                logger.warning("Running container in Android environment. Note: proot provides process isolation, not full containerization. Some system calls may not be supported, performance may be lower than native Docker.")
 
-            # 准备根文件系统（下载或使用现有）
-            logger.info("准备根文件系统...")
+            # Prepare rootfs (download or use existing)
+            logger.info("Preparing rootfs...")
             rootfs_dir = self._prepare_rootfs(input_path, args, provided_rootfs_dir=rootfs_dir)
             if not rootfs_dir:
                 return False
 
             self.rootfs_dir = rootfs_dir
 
-            # 如果命令以'--'开头，则移除它
+            # If command starts with '--', remove it
             if args.command and args.command[0] == '--':
                 args.command = args.command[1:]
 
-            # 查找镜像配置
+            # Find image config
             self._find_image_config()
 
             # Android compatibility patches for known runtime limitations.
             self._maybe_patch_supervisord_socket(self.rootfs_dir)
 
-            # 如果是后台运行模式，强制设置为非交互式
+            # If running in background mode, force set to non-interactive
             if args.detach:
                 args.interactive = False
 
-            # 构建proot命令
+            # Build proot command
             proot_cmd = self._build_proot_command(args)
 
-            logger.info(f"启动容器...")
-            logger.debug(f"proot命令: {' '.join(proot_cmd)}")
+            logger.info(f"Starting container...")
+            logger.debug(f"proot command: {' '.join(proot_cmd)}")
 
-            # 日志文件处理
+            # Log file handling
             log_file_path = getattr(args, 'log_file', None)
             log_file_handle = None
             if log_file_path:
@@ -1095,33 +1095,33 @@ class ProotRunner:
                     # Append to the log file
                     log_file_handle = open(log_file_path, 'a')
                 except IOError as e:
-                    logger.error(f"无法打开日志文件 {log_file_path}: {e}")
+                    logger.error(f"Cannot open log file {log_file_path}: {e}")
 
-            # 运行proot
+            # Run proot
             if args.detach:
-                # 手动实现后台化 (fork/exec)
+                # Manually implement backgrounding (fork/exec)
                 env = self._prepare_environment()
                 pid_file_path = getattr(args, 'pid_file', None)
 
                 try:
                     pid = os.fork()
                     if pid > 0:
-                        # 父进程
-                        logger.info(f"容器已在后台启动，PID: {pid}")
+                        # Parent process
+                        logger.info(f"Container started in background, PID: {pid}")
                         if pid_file_path:
                             try:
                                 with open(pid_file_path, 'w') as f:
                                     f.write(str(pid))
-                                logger.debug(f"PID {pid} 已写入 {pid_file_path}")
+                                logger.debug(f"PID {pid} written to {pid_file_path}")
                             except IOError as e:
-                                logger.error(f"写入PID文件失败: {e}")
-                        # 父进程成功写入PID后退出
+                                logger.error(f"Failed to write PID file: {e}")
+                        # Parent processSuccessfully written PID and exiting
                         return True
 
-                    # 子进程
-                    os.setsid() # 创建新会话，脱离控制终端
+                    # Child process
+                    os.setsid() # Create new session, detach from controlling terminal
                     
-                    # 重定向标准文件描述符
+                    # Redirect standard file descriptors
                     sys.stdout.flush()
                     sys.stderr.flush()
                     
@@ -1131,56 +1131,56 @@ class ProotRunner:
                     os.dup2(stdout_dest.fileno(), sys.stdout.fileno())
                     os.dup2(stderr_dest.fileno(), sys.stderr.fileno())
                     
-                    # stdin重定向到/dev/null
+                    # stdin redirected to /dev/null
                     with open(os.devnull, 'rb') as devnull:
                         os.dup2(devnull.fileno(), sys.stdin.fileno())
 
-                    # 执行proot命令
+                    # Execute proot command
                     os.execvpe(proot_cmd[0], proot_cmd, env)
 
                 except Exception as e:
-                    logger.error(f"后台启动失败 (fork/exec): {e}")
-                    # 子进程如果exec失败，需要手动退出
+                    logger.error(f"Background startup failed (fork/exec): {e}")
+                    # Child process needs to manually exit if exec fails
                     sys.exit(1)
             else:
-                # 前台运行（交互式或非交互式）
-                logger.info("进入容器环境...")
+                # Run in foreground (interactive or non-interactive)
+                logger.info("Entering container environment...")
                 env = self._prepare_environment()
                 
-                # 根据是否为交互式模式设置stdin/stdout/stderr
+                # Set stdin/stdout/stderr based on whether it's interactive mode
                 if getattr(args, 'interactive', False):
-                    # 交互式模式：连接到终端
+                    # Interactive mode: connect to terminal
                     subprocess.run(proot_cmd, env=env)
                 else:
-                    # 非交互式模式：重定向到日志文件（如果提供）
+                    # Non-interactive mode: redirect to log file (if provided)
                     subprocess.run(proot_cmd, env=env, stdout=log_file_handle, stderr=log_file_handle)
                 return True
 
         except KeyboardInterrupt:
-            logger.info("用户中断")
+            logger.info("User interrupted")
             return True
         except Exception as e:
-            logger.error(f"运行失败: {e}")
+            logger.error(f"Run failed: {e}")
             return False
         finally:
-            # 关闭日志文件句柄
+            # Close log file handle
             if log_file_handle:
                 log_file_handle.close()
 
-            # 只有在前台运行时，并且我们创建了临时目录时，才进行清理
+            # Only cleanup when running in foreground and we created a temporary directory
             if hasattr(args, 'detach') and not args.detach:
                 self._cleanup()
     
     def _cleanup(self):
-        """清理临时文件"""
+        """Cleanup temporary files"""
         if self.temp_dir and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
-            logger.info(f"清理临时目录: {self.temp_dir}")
+            logger.info(f"Cleaning up temporary directory: {self.temp_dir}")
 
     def list_cache(self):
-        """列出缓存的镜像"""
+        """List cached images"""
         if not os.path.exists(self.cache_dir):
-            logger.info("缓存目录不存在")
+            logger.info("Cache directory does not exist")
             return
 
         cache_files = []
@@ -1189,11 +1189,11 @@ class ProotRunner:
                 cache_path = os.path.join(self.cache_dir, filename)
                 info_path = cache_path + '.info'
 
-                # 获取文件信息
+                # Get file information
                 stat = os.stat(cache_path)
                 size_mb = stat.st_size / 1024 / 1024
 
-                # 尝试读取缓存信息
+                # Try to read cache info
                 image_url = "Unknown"
                 created_time = "Unknown"
 
@@ -1214,24 +1214,24 @@ class ProotRunner:
                 })
 
         if not cache_files:
-            logger.info("没有缓存的镜像")
+            logger.info("No cached images")
             return
 
-        logger.info(f"缓存目录: {self.cache_dir}")
-        logger.info(f"共有 {len(cache_files)} 个缓存镜像:")
+        logger.info(f"Cache directory: {self.cache_dir}")
+        logger.info(f"Total {len(cache_files)} cached images:")
         logger.info("-" * 80)
 
         for cache in cache_files:
-            logger.info(f"文件: {cache['filename']}")
-            logger.info(f"镜像: {cache['image_url']}")
-            logger.info(f"大小: {cache['size_mb']:.2f} MB")
-            logger.info(f"创建时间: {cache['created_time']}")
+            logger.info(f"File: {cache['filename']}")
+            logger.info(f"Image: {cache['image_url']}")
+            logger.info(f"Size: {cache['size_mb']:.2f} MB")
+            logger.info(f"Created: {cache['created_time']}")
             logger.info("-" * 80)
 
     def clear_cache(self, image_url=None):
-        """清理缓存"""
+        """Clean cache"""
         if image_url:
-            # 清理特定镜像的缓存
+            # Clean cache for specific image
             cache_path = self._get_image_cache_path(image_url)
             info_path = self._get_cache_info_path(image_url)
 
@@ -1242,41 +1242,41 @@ class ProotRunner:
                     removed = True
 
             if removed:
-                logger.info(f"已清理镜像缓存: {image_url}")
+                logger.info(f"Cleaned image cache: {image_url}")
             else:
-                logger.info(f"镜像未缓存: {image_url}")
+                logger.info(f"Image not cached: {image_url}")
         else:
-            # 清理所有缓存
+            # Clean all caches
             if os.path.exists(self.cache_dir):
                 shutil.rmtree(self.cache_dir)
                 self._ensure_cache_dir()
-                logger.info("已清理所有缓存")
+                logger.info("Cleaned all caches")
             else:
-                logger.info("缓存目录不存在")
+                logger.info("Cache directory does not exist")
 
 def main():
     parser = argparse.ArgumentParser(
-        description='使用proot运行Docker镜像的一条龙服务',
+        description='One-stop service for running Docker images with proot',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
-  # 直接运行镜像URL
+Examples:
+  # Run image URL directly
   %(prog)s alpine:latest
   %(prog)s swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/snailyp/gemini-balance:latest-linuxarm64
 
-  # 带环境变量运行
+  # withEnvironment variablesrun
   %(prog)s -e "API_KEY=sk-12345" -e "MODE=test" alpine:latest env
 
-  # 使用本地根文件系统
+  # Use local rootfs
   %(prog)s -b /host/data:/container/data rootfs.tar.gz /bin/bash
 
-  # 后台运行
+  # Run in background
   %(prog)s -w /app -d nginx:alpine
   
-  # 交互式运行
+  # Interactive run
   %(prog)s -it alpine:latest /bin/sh
 
-  # 缓存管理
+  # Cache management
   %(prog)s --list-cache
   %(prog)s --clear-cache alpine:latest
         """
@@ -1285,89 +1285,89 @@ def main():
     parser.add_argument(
         'image_or_rootfs',
         nargs='?',
-        help='Docker镜像URL或根文件系统路径（tar文件或目录）'
+        help='Docker image URL or rootfs path (tar file or directory)'
     )
     
     parser.add_argument(
         'command',
         nargs='*',
-        help='要执行的命令（默认使用镜像的默认命令）'
+        help="Command to execute (default uses image's default command)"
     )
     
     parser.add_argument(
         '-e', '--env',
         action='append',
         default=[],
-        help='设置环境变量 (格式: KEY=VALUE)'
+        help='Set environment variable (format: KEY=VALUE)'
     )
     
     parser.add_argument(
         '-b', '--bind',
         action='append', 
         default=[],
-        help='绑定挂载 (格式: HOST_PATH:CONTAINER_PATH)'
+        help='Bind mount (format: HOST_PATH:CONTAINER_PATH)'
     )
     
     parser.add_argument(
         '-w', '--workdir',
-        help='工作目录'
+        help='Working directory'
     )
     
     parser.add_argument(
         '-d', '--detach',
         action='store_true',
-        help='后台运行'
+        help='Run in background'
     )
     
     parser.add_argument(
         '-it', '--interactive',
         action='store_true',
-        help='交互式运行容器 (分配伪TTY并保持stdin打开)'
+        help='Run container interactively (allocate pseudo-TTY and keep stdin open)'
     )
     
     parser.add_argument(
         '-v', '--verbose',
         action='store_true',
-        help='显示详细日志'
+        help='Show verbose logs'
     )
 
     parser.add_argument(
         '--force-download',
         action='store_true',
-        help='强制重新下载镜像，忽略缓存'
+        help='Force re-download image, ignore cache'
     )
 
     parser.add_argument(
         '--cache-dir',
-        help='指定缓存目录路径'
+        help='Specify cache directory path'
     )
-    parser.add_argument('--username', help='Registry用户名')
-    parser.add_argument('--password', help='Registry密码')
+    parser.add_argument('--username', help='Registry username')
+    parser.add_argument('--password', help='Registry password')
 
     parser.add_argument(
         '--rootfs-dir',
-        help='指定持久化的根文件系统路径 (主要由docker_cli.py在后台模式下使用)'
+        help='Specify persistent rootfs path (mainly used by docker_cli.py in background mode)'
     )
     parser.add_argument(
         '--pid-file',
-        help='在后台模式下保存真实PID的文件路径 (主要由docker_cli.py在后台模式下使用)'
+        help='File path to save real PID in background mode (mainly used by docker_cli.py in background mode)'
     )
 
     parser.add_argument(
         '--log-file',
-        help='在后台模式下保存容器内部stdout/stderr的文件路径 (主要由docker_cli.py使用)'
+        help='File path to save container internal stdout/stderr in background mode (mainly used by docker_cli.py)'
     )
     
     parser.add_argument(
         '--list-cache',
         action='store_true',
-        help='列出缓存的镜像'
+        help='List cached images'
     )
 
     parser.add_argument(
         '--clear-cache',
         metavar='IMAGE_URL',
-        help='清理指定镜像的缓存，或使用"all"清理所有缓存'
+        help='Clean cache for specified image, or use "all" to clean all caches'
     )
 
     args = parser.parse_args()
@@ -1375,10 +1375,10 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # 创建runner实例
+    # Create runner instance
     runner = ProotRunner(cache_dir=args.cache_dir)
 
-    # 处理缓存管理命令
+    # Handle cache management commands
     if args.list_cache:
         runner.list_cache()
         return
@@ -1390,9 +1390,9 @@ def main():
             runner.clear_cache(args.clear_cache)
         return
 
-    # 检查是否提供了镜像或根文件系统
+    # Check if image or rootfs was provided
     if not args.image_or_rootfs:
-        parser.error("请提供Docker镜像URL或根文件系统路径")
+        parser.error("Please provide Docker image URL or rootfs path")
 
     # Run container
     success = runner.run(args.image_or_rootfs, args, rootfs_dir=args.rootfs_dir, pid_file=args.pid_file)
