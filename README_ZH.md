@@ -1,34 +1,34 @@
 # Android Docker CLI
 
-[English](README.md) | 中文
+[English](README.md) | Chinese
 
-一个使用 `proot` 在 Android 上运行 Docker 镜像的工具，无需 Docker 引擎。本项目旨在 [Termux](https://github.com/termux/termux-app) 应用内部使用，为 Android 提供一个类似 Docker 的命令行界面，用于管理持久化容器。
+A tool to run Docker images on Android using `proot`, without needing a Docker engine. This project is designed to be used within the [Termux](https://github.com/termux/termux-app) application, providing a Docker-like command-line interface to manage persistent containers.
 
-## 核心功能
+## Core Features
 
-- **模块化代码**: 所有核心逻辑都被组织在 `android_docker` 包中。
-- **主命令行界面**: 主要入口点是 `android_docker/docker_cli.py`，提供一个用于完整容器生命周期管理的 Docker 风格 CLI。
-- **持久化容器**: 容器拥有持久化的文件系统，可以被启动、停止和重启。
-- **底层引擎**: 使用 `android_docker/proot_runner.py` 来执行容器，使用 `android_docker/create_rootfs_tar.py` 来下载和准备容器镜像。
+- **Modular Codebase**: All core logic is organized within the `android_docker` package.
+- **Main CLI**: The main entry point is `android_docker/docker_cli.py`, providing a Docker-style CLI for full container lifecycle management.
+- **Persistent Containers**: Containers have a persistent filesystem and can be started, stopped, and restarted.
+- **Underlying Engine**: Uses `android_docker/proot_runner.py` to execute containers and `android_docker/create_rootfs_tar.py` to download and prepare container images.
 
-## 安装
+## Installation
 
-您可以使用一行命令来安装此工具：
+You can install this tool with a single command:
 
 ```bash
-# 安装最新版本（main分支）
-curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/main/scripts/install.sh | sh
+# Install latest version (main branch)
+curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/install.sh | sh
 
-# 安装特定版本（例如 v1.1.0）
-curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/v1.1.0/scripts/install.sh | sh
+# Install specific version (e.g., v1.1.0)
+curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/v1.1.0/scripts/install.sh | sh
 
-# 或使用环境变量指定版本
-INSTALL_VERSION=v1.2.0 curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/main/scripts/install.sh | sh
+# Or use environment variable to specify version
+INSTALL_VERSION=v1.2.0 curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/install.sh | sh
 ```
 
-这将会创建一个名为 `docker` 的可执行命令到您的系统路径中。安装后，您只需输入 `docker` 即可运行此工具。
+This will create an executable `docker` command in your path. After installation, you can run the tool by simply typing `docker`.
 
-## 安装依赖
+## Install Dependencies
 
 ```bash
 # Android Termux
@@ -38,133 +38,133 @@ pkg update && pkg install python proot curl tar
 sudo apt install python3 proot curl tar
 ```
 
-## 快速使用
+## Quick Start
 
-安装后，您可以像使用标准 Docker 命令行一样使用此工具。
+After installation, you can use this tool just like the standard Docker command line.
 
 ```bash
-# 登录到 Docker Registry (例如 Docker Hub)
+# Log in to a Docker registry (e.g., Docker Hub)
 docker login
 
-# 登录后从私有仓库拉取镜像
+# Pull an image from a private registry after logging in
 docker login your-private-registry.com
 docker pull your-private-registry.com/my-image
 
-# 拉取一个公开镜像
+# Pull a public image
 docker pull alpine:latest
 
-# 在前台运行一个容器
+# Run a container in the foreground
 docker run alpine:latest echo "Hello from container"
 
-# 在后台（分离模式）运行一个容器
+# Run a container in the background (detached mode)
 docker run -d -e "API_KEY=sk-12345" --volume /sdcard:/data nginx:alpine
 
-# 交互式运行容器
+# Run a container interactively
 docker run -it alpine:latest /bin/sh
 
-# 使用项目中的自定义配置文件运行 Nginx 容器
-# 此示例使用 `examples/nginx.conf` 文件, 它将监听 8777 端口。
+# Run an Nginx container with a custom config file from the project
+# This example uses the `examples/nginx.conf` file, which listens on port 8777.
 docker run -d --name my-nginx -v $(pwd)/examples/nginx.conf:/etc/nginx/nginx.conf nginx:alpine
 
-# 列出正在运行的容器
+# List running containers
 docker ps
 
-# 列出所有容器（包括已停止的）
+# List all containers (including stopped ones)
 docker ps -a
 
-# 查看容器日志
+# View container logs
 docker logs <container_id>
-docker logs -f <container_id>  # 持续跟踪日志
+docker logs -f <container_id>  # Follow logs continuously
 
-# 停止一个容器
+# Stop a container
 docker stop <container_id>
 
-# 启动一个已停止的容器
+# Start a stopped container
 docker start <container_id>
 
-# 重启一个容器
+# Restart a container
 docker restart <container_id>
 
-# 删除一个容器
+# Remove a container
 docker rm <container_id>
 
-# 附加到运行中的容器
+# Attach to a running container
 docker attach <container_id>
 
-# 在运行中的容器中执行命令
+# Execute a command in a running container
 docker exec <container_id> ls -l
 docker exec -it <container_id> /bin/sh
 
-# 列出缓存的镜像
+# List cached images
 docker images
 
-# 从本地tar文件加载镜像
+# Load an image from a local tar file
 docker load -i alpine.tar
 docker load -i /path/to/my-image.tar
 
-# 删除一个缓存的镜像
+# Remove a cached image
 docker rmi alpine:latest
 
-# 登录到镜像仓库
+# Log in to an image registry
 docker login your-private-registry.com
 ```
 
-## 加载本地镜像
+## Loading Local Images
 
-您可以从本地tar归档文件加载Docker镜像，而无需从镜像仓库拉取。这在以下情况下很有用：
-- 使用预先下载的镜像
-- 加载在其他系统上构建的镜像
-- 离线工作
+You can load Docker images from local tar archive files without pulling from a registry. This is useful for:
+- Using pre-downloaded images
+- Loading images built on other systems
+- Working offline
 
-### 要求
+### Requirements
 
-tar文件必须是有效的Docker镜像归档文件，包含：
-- `manifest.json` - 镜像清单
-- 层tar文件（例如 `<hash>/layer.tar`）
-- 配置JSON文件（例如 `<hash>.json`）
+The tar file must be a valid Docker image archive containing:
+- `manifest.json` - Image manifest
+- Layer tar files (e.g., `<hash>/layer.tar`)
+- Config JSON file (e.g., `<hash>.json`)
 
-### 使用方法
+### Usage
 
 ```bash
-# 从tar文件加载镜像
+# Load an image from a tar file
 docker load -i alpine.tar
 
-# 从指定路径加载镜像
+# Load an image from a specific path
 docker load -i /sdcard/Download/my-image.tar
 
-# 加载后，镜像将出现在您的镜像列表中
+# After loading, the image will appear in your images list
 docker images
 ```
 
-### 创建Docker镜像Tar文件
+### Creating Docker Image Tar Files
 
-您可以使用标准Docker创建兼容的tar文件：
+You can create compatible tar files using standard Docker:
 
 ```bash
-# 在安装了Docker的系统上
+# On a system with Docker installed
 docker save alpine:latest -o alpine.tar
 
-# 将tar文件传输到您的Android设备
-# 然后加载它
+# Transfer the tar file to your Android device
+# Then load it
 docker load -i alpine.tar
 ```
 
-## Docker Compose 支持
+## Docker Compose Support
 
-此工具包含一个 `docker-compose` 命令，用于管理多容器应用。
+This tool includes a `docker-compose` command for managing multi-container applications.
 
 ```bash
-# 启动 docker-compose.yml 中定义的服务
+# Start services defined in docker-compose.yml
 docker-compose up
 
-# 在后台运行
+# Run in the background
 docker-compose up -d
 
-# 停止并移除服务
+# Stop and remove services
 docker-compose down
 ```
 
-### `docker-compose.yml` 示例
+### Example `docker-compose.yml`
 
 ```yaml
 version: '3'
@@ -177,80 +177,80 @@ services:
     container_name: my-redis-db
 ```
 
-## 主要特性
+## Key Features
 
-- ✅ **完整的容器生命周期**: `run`, `ps`, `stop`, `start`, `restart`, `logs`, `rm`, `attach`, `exec`。
-- ✅ **镜像仓库认证**: 使用 `login` 命令登录私有或公共镜像仓库。
-- ✅ **本地镜像加载**: 使用 `docker load` 从本地tar文件加载Docker镜像。
-- ✅ **OCI镜像仓库支持**: 从符合OCI标准的镜像仓库（如GitHub Container Registry (ghcr.io)）拉取镜像。
-- ✅ **Docker Compose 支持**: 使用 `docker-compose up` 和 `down` 管理多容器配置。
-- ✅ **Docker风格CLI**: 熟悉且直观的命令行界面。
-- ✅ **持久化存储**: 容器在重启后能保持其状态和文件系统，存储于 `~/.docker_proot_cache/`。
-- ✅ **Android优化**: 针对 Termux 环境进行了特别优化。
+- ✅ **Complete Container Lifecycle**: `run`, `ps`, `stop`, `start`, `restart`, `logs`, `rm`, `attach`, `exec`.
+- ✅ **Registry Authentication**: Use the `login` command to authenticate with private or public registries.
+- ✅ **Local Image Loading**: Load Docker images from local tar files using `docker load`.
+- ✅ **OCI Registry Support**: Pull images from OCI-compliant registries like GitHub Container Registry (ghcr.io).
+- ✅ **Docker Compose Support**: Manage multi-container configurations using `docker-compose up` and `down`.
+- ✅ **Docker-style CLI**: Familiar and intuitive command-line interface.
+- ✅ **Persistent Storage**: Containers maintain their state and filesystem across restarts, stored in `~/.docker_proot_cache/`.
+- ✅ **Android Optimized**: Specially optimized for the Termux environment.
 
-## 故障排除
+## Troubleshooting
 
 ```bash
-# 检查依赖
+# Check dependencies
 curl --version && tar --version && proot --version
 
-# 使用详细日志获取更多信息
+# Use verbose logging for more information
 docker --verbose run alpine:latest
 ```
 
-### Android常见问题
+### Common Android Issues
 
-#### 权限拒绝错误
+#### Permission Denied Errors
 
-如果遇到权限错误，例如：
+If you encounter permission errors, such as:
 ```
 nginx: [alert] could not open error log file: open() "/var/log/nginx/error.log" failed (13: Permission denied)
 ```
 
-**解决方案**：工具会在Android上自动创建可写的系统目录。请确保使用最新版本。
+**Solution**: The tool automatically creates writable system directories on Android. Make sure you're using the latest version.
 
-#### Whiteout文件警告
+#### Whiteout File Warnings
 
-如果看到关于 `.wh.auxfiles` 或类似whiteout文件的警告：
+If you see warnings about `.wh.auxfiles` or similar whiteout files:
 ```
 tar: ./var/lib/apt/lists/.wh.auxfiles: Cannot open: Permission denied
 ```
 
-**解决方案**：这些文件在Android上会被自动跳过。层删除语义可能不完全保留，但容器可以正常运行。
+**Solution**: These files are automatically skipped on Android. Layer deletion semantics may not be fully preserved, but the container will run normally.
 
-#### 提取失败
+#### Extraction Failures
 
-如果镜像提取失败：
-- 使用 `--verbose` 标志查看详细错误信息
-- 检查Termux中的可用磁盘空间
-- 先尝试拉取较小的镜像（例如 `alpine:latest`）
-- 确保所有依赖已安装：`pkg install python proot curl tar`
+If image extraction fails:
+- Use the `--verbose` flag to see detailed error information
+- Check available disk space in Termux
+- Try pulling a smaller image first (e.g., `alpine:latest`)
+- Ensure all dependencies are installed: `pkg install python proot curl tar`
 
-#### 容器启动问题
+#### Container Startup Issues
 
-如果容器启动失败：
-- 使用 `docker logs <container_id>` 查看日志
-- 验证镜像是否与您的架构兼容
-- 某些镜像可能需要proot中不可用的特定功能
-- 尝试使用 `--verbose` 运行以获取详细调试信息
+If a container fails to start:
+- Use `docker logs <container_id>` to view logs
+- Verify the image is compatible with your architecture
+- Some images may require specific features not available in proot
+- Try running with `--verbose` for detailed debugging information
 
-如果在 Android/Termux 下看到类似 `chown ... Operation not permitted` 或 `Can't drop privilege as nonroot user` 的错误：
-- 请更新到较新的版本。Android 运行会启用额外的兼容行为，使一些“启动时需要 root、随后再降权”的镜像无需额外参数即可运行。
+If you see errors like `chown ... Operation not permitted` or `Can't drop privilege as nonroot user` on Android/Termux:
+- Please update to a newer version. Android runs enable additional compatibility behavior that allows some "start-as-root-then-drop-privileges" images to run without extra parameters.
 
-## 限制说明
+## Limitations
 
-- 基于 `proot`，并非完整的容器化（无内核级的进程或网络隔离）。
-- 某些系统调用可能不被支持。
-- 性能相较于原生 Docker 会有所下降。
-- 网络隔离有限。
+- Based on `proot`, not full containerization (no kernel-level process or network isolation).
+- Some system calls may not be supported.
+- Performance is lower compared to native Docker.
+- Limited network isolation.
 
-### Android特定限制
+### Android-Specific Limitations
 
-- **Whiteout文件**：由于Android权限限制，Docker层删除语义（whiteout文件）会被跳过。这意味着从前一层删除的文件可能仍然存在于最终容器文件系统中。
-- **系统目录**：可写系统目录（`/var/log`、`/var/cache`、`/tmp` 等）会自动从主机存储绑定挂载，以解决Android权限限制。
-- **文件权限**：某些文件权限和所有权操作在Android文件系统上可能无法按预期工作。
-- **进程隔离**：proot提供进程隔离但不是完整的容器化。容器共享相同的内核，资源隔离有限。
+- **Whiteout Files**: Due to Android permission restrictions, Docker layer deletion semantics (whiteout files) are skipped. This means files deleted from previous layers may still exist in the final container filesystem.
+- **System Directories**: Writable system directories (`/var/log`, `/var/cache`, `/tmp`, etc.) are automatically bind-mounted from host storage to work around Android permission restrictions.
+- **File Permissions**: Some file permission and ownership operations may not work as expected on Android filesystems.
+- **Process Isolation**: proot provides process isolation but not full containerization. Containers share the same kernel with limited resource isolation.
 
-## 许可证
+## License
 
 MIT License

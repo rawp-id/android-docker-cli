@@ -37,7 +37,7 @@ Progressive disclosure:
 
 ## Memory Persistence Rule
 
-When the user says "记住" / "remember" for a project-specific workflow:
+When the user says "remember" for a project-specific workflow:
 
 1. Persist it to repository docs in the same turn (do not keep it only in chat context).
 2. Add a short rule in `AGENTS.md` and link to a detailed document under `docs/`.
