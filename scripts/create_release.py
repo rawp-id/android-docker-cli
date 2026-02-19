@@ -61,7 +61,7 @@ Release Date: {date}
 
 ### Installation
 ```bash
-curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/{version}/scripts/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/{version}/scripts/install.sh | sh
 ```
 """
     return notes
