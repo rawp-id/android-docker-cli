@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-自动化创建 GitHub Release 的脚本
-使用方法: python scripts/create_release.py <version> [--notes "release notes"]
-示例: python scripts/create_release.py v1.1.0
+Script to automate creating GitHub Releases
+Usage: python scripts/create_release.py <version> [--notes "release notes"]
+Example: python scripts/create_release.py v1.1.0
 """
 
 import subprocess
@@ -12,7 +12,7 @@ from datetime import datetime
 
 
 def run_command(cmd, check=True):
-    """执行命令并返回输出"""
+    """Execute command and return output"""
     result = subprocess.run(
         cmd,
         shell=True,
@@ -21,19 +21,19 @@ def run_command(cmd, check=True):
         encoding='utf-8'
     )
     if check and result.returncode != 0:
-        print(f"错误: {result.stderr}")
+        print(f"Error: {result.stderr}")
         sys.exit(1)
     return result.stdout.strip()
 
 
 def get_recent_commits(count=5):
-    """获取最近的提交记录"""
+    """Get recent commit history"""
     commits = run_command(f"git log --oneline -n {count}")
     return commits
 
 
 def create_release_notes(version, custom_notes=None):
-    """生成 Release 说明"""
+    """Generate Release notes"""
     if custom_notes:
         return custom_notes
     
@@ -42,24 +42,24 @@ def create_release_notes(version, custom_notes=None):
     
     notes = f"""## Android Docker CLI {version}
 
-发布日期: {date}
+Release Date: {date}
 
-### 变更日志
+### Changelog
 {commits}
 
-### 主要功能
-- ✅ Docker 镜像拉取和缓存
-- ✅ 容器生命周期管理（run, start, stop, restart, rm）
-- ✅ Docker Compose 支持
-- ✅ 持久化容器文件系统
-- ✅ 私有仓库认证支持
-- ✅ 卷挂载和环境变量注入
+### Key Features
+- ✅ Docker image pull and caching
+- ✅ Container lifecycle management (run, start, stop, restart, rm)
+- ✅ Docker Compose support
+- ✅ Persistent container filesystem
+- ✅ Private registry authentication support
+- ✅ Volume mounts and environment variable injection
 
-### 支持环境
+### Supported Environments
 - Android Termux
 - Linux (Ubuntu/Debian)
 
-### 安装方式
+### Installation
 ```bash
 curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/{version}/scripts/install.sh | sh
 ```
@@ -68,43 +68,43 @@ curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/{versi
 
 
 def main():
-    parser = argparse.ArgumentParser(description='自动创建 GitHub Release')
-    parser.add_argument('version', help='版本号 (例如: v1.1.0)')
-    parser.add_argument('--notes', help='自定义 Release 说明', default=None)
-    parser.add_argument('--draft', action='store_true', help='创建草稿 Release')
-    parser.add_argument('--prerelease', action='store_true', help='标记为预发布版本')
+    parser = argparse.ArgumentParser(description='Automatically create GitHub Release')
+    parser.add_argument('version', help='Version number (e.g., v1.1.0)')
+    parser.add_argument('--notes', help='Custom Release notes', default=None)
+    parser.add_argument('--draft', action='store_true', help='Create draft Release')
+    parser.add_argument('--prerelease', action='store_true', help='Mark as pre-release version')
     
     args = parser.parse_args()
     version = args.version
     
-    # 确保版本号格式正确
+    # Ensure version number format is correct
     if not version.startswith('v'):
         version = f'v{version}'
     
-    print(f"📦 准备创建 Release: {version}")
+    print(f"📦 Preparing to create Release: {version}")
     
-    # 检查是否有未提交的更改
+    # Check for uncommitted changes
     status = run_command("git status --porcelain", check=False)
     if status:
-        print("⚠️  警告: 有未提交的更改")
-        response = input("是否继续? (y/n): ")
+        print("⚠️  Warning: There are uncommitted changes")
+        response = input("Continue anyway? (y/n): ")
         if response.lower() != 'y':
-            print("已取消")
+            print("Cancelled")
             sys.exit(0)
     
-    # 创建 tag
-    print(f"🏷️  创建 tag: {version}")
+    # Create tag
+    print(f"🏷️  Creating tag: {version}")
     run_command(f'git tag -a {version} -m "Release {version}"')
     
-    # 推送 tag
-    print(f"⬆️  推送 tag 到 GitHub")
+    # Push tag
+    print(f"⬆️  Pushing tag to GitHub")
     run_command(f'git push origin {version}')
     
-    # 生成 Release 说明
+    # Generate Release notes
     notes = create_release_notes(version, args.notes)
     
-    # 创建 Release
-    print(f"🚀 创建 GitHub Release")
+    # Create Release
+    print(f"🚀 Creating GitHub Release")
     
     cmd = f'gh release create {version} --title "{version}" --notes "{notes}"'
     
@@ -115,7 +115,7 @@ def main():
     
     release_url = run_command(cmd)
     
-    print(f"\n✅ Release 创建成功!")
+    print(f"\n✅ Release created successfully!")
     print(f"🔗 {release_url}")
 
 

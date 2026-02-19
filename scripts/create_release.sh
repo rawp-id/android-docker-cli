@@ -1,78 +1,78 @@
 #!/bin/bash
-# 自动化创建 GitHub Release 的脚本
-# 使用方法: bash scripts/create_release.sh <version>
-# 示例: bash scripts/create_release.sh v1.1.0
+# Script to automate creating GitHub Releases
+# Usage: bash scripts/create_release.sh <version>
+# Example: bash scripts/create_release.sh v1.1.0
 
 set -e
 
 VERSION=$1
 
 if [ -z "$VERSION" ]; then
-    echo "错误: 请提供版本号"
-    echo "使用方法: bash scripts/create_release.sh <version>"
-    echo "示例: bash scripts/create_release.sh v1.1.0"
+    echo "Error: Please provide version number"
+    echo "Usage: bash scripts/create_release.sh <version>"
+    echo "Example: bash scripts/create_release.sh v1.1.0"
     exit 1
 fi
 
-# 确保版本号以 v 开头
+# Ensure version number starts with v
 if [[ ! $VERSION == v* ]]; then
     VERSION="v$VERSION"
 fi
 
-echo "📦 准备创建 Release: $VERSION"
+echo "📦 Preparing to create Release: $VERSION"
 
-# 检查是否有未提交的更改
+# Check for uncommitted changes
 if [[ -n $(git status --porcelain) ]]; then
-    echo "⚠️  警告: 有未提交的更改"
-    read -p "是否继续? (y/n): " -n 1 -r
+    echo "⚠️  Warning: There are uncommitted changes"
+    read -p "Continue anyway? (y/n): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "已取消"
+        echo "Cancelled"
         exit 0
     fi
 fi
 
-# 获取最近的提交记录
+# Get recent commit history
 COMMITS=$(git log --oneline -n 5)
 DATE=$(date +%Y-%m-%d)
 
-# 创建 Release 说明
+# Create Release notes
 NOTES="## Android Docker CLI $VERSION
 
-发布日期: $DATE
+Release Date: $DATE
 
-### 变更日志
+### Changelog
 $COMMITS
 
-### 主要功能
-- ✅ Docker 镜像拉取和缓存
-- ✅ 容器生命周期管理（run, start, stop, restart, rm）
-- ✅ Docker Compose 支持
-- ✅ 持久化容器文件系统
-- ✅ 私有仓库认证支持
-- ✅ 卷挂载和环境变量注入
+### Key Features
+- ✅ Docker image pull and caching
+- ✅ Container lifecycle management (run, start, stop, restart, rm)
+- ✅ Docker Compose support
+- ✅ Persistent container filesystem
+- ✅ Private registry authentication support
+- ✅ Volume mounts and environment variable injection
 
-### 支持环境
+### Supported Environments
 - Android Termux
 - Linux (Ubuntu/Debian)
 
-### 安装方式
+### Installation
 \`\`\`bash
 curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/$VERSION/scripts/install.sh | sh
 \`\`\`"
 
-# 创建 tag
-echo "🏷️  创建 tag: $VERSION"
+# Create tag
+echo "🏷️  Creating tag: $VERSION"
 git tag -a "$VERSION" -m "Release $VERSION"
 
-# 推送 tag
-echo "⬆️  推送 tag 到 GitHub"
+# Push tag
+echo "⬆️  Pushing tag to GitHub"
 git push origin "$VERSION"
 
-# 创建 Release
-echo "🚀 创建 GitHub Release"
+# Create Release
+echo "🚀 Creating GitHub Release"
 gh release create "$VERSION" --title "$VERSION" --notes "$NOTES"
 
 echo ""
-echo "✅ Release 创建成功!"
+echo "✅ Release created successfully!"
 echo "🔗 https://github.com/jinhan1414/android-docker-cli/releases/tag/$VERSION"
