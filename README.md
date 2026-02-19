@@ -251,6 +251,8 @@ If you see errors like `chown ... Operation not permitted` or `Can't drop privil
 - **File Permissions**: Some file permission and ownership operations may not work as expected on Android filesystems.
 - **Process Isolation**: proot provides process isolation but not full containerization. Containers share the same kernel and have limited resource isolation.
 
+**Thanks for @jinhan1414, fork project, this project full english languange**
+
 ## License
 
 MIT License
