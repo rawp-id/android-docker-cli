@@ -58,7 +58,7 @@ $COMMITS
 
 ### Installation
 \`\`\`bash
-curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/$VERSION/scripts/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/$VERSION/scripts/install.sh | sh
 \`\`\`"
 
 # Create tag
@@ -75,4 +75,4 @@ gh release create "$VERSION" --title "$VERSION" --notes "$NOTES"
 
 echo ""
 echo "✅ Release created successfully!"
-echo "🔗 https://github.com/jinhan1414/android-docker-cli/releases/tag/$VERSION"
+echo "🔗 https://github.com/rawp-id/android-docker-cli/releases/tag/$VERSION"
