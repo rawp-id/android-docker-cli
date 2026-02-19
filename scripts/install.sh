@@ -3,7 +3,7 @@
 # Automated installer for android-docker-cli on Termux
 
 # --- Configuration ---
-GITHUB_REPO="https://github.com/jinhan1414/android-docker-cli"
+GITHUB_REPO="https://github.com/rawp-id/android-docker-cli"
 INSTALL_DIR="$HOME/.android-docker-cli"
 CMD_NAME="docker"
 CMD_PATH="$PREFIX/bin/$CMD_NAME"
