@@ -10,7 +10,7 @@
 
 set -e
 
-OWNER_REPO="jinhan1414/android-docker-cli"
+OWNER_REPO="rawp-id/android-docker-cli"
 API_URL="https://api.github.com/repos/${OWNER_REPO}/releases/latest"
 
 echo "[INFO] Checking latest release for ${OWNER_REPO}..."
