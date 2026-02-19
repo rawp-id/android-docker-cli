@@ -18,7 +18,7 @@ LOG_FILE="$WORK_DIR/repro.log"
 if ! command -v docker-compose >/dev/null 2>&1; then
   echo "ERROR: docker-compose command not found."
   echo "Install with README command first:"
-  echo "  INSTALL_VERSION=main curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/main/scripts/install.sh | sh"
+  echo "  INSTALL_VERSION=main curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/install.sh | sh"
   exit 1
 fi
 
