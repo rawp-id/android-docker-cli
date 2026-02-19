@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Docker风格的命令行接口
-模仿Docker命令行工具，提供pull、run、ps、images等命令
-用于管理通过proot运行的容器
+Docker-style command-line interface
+Mimics Docker command-line tools, providing pull, run, ps, images and other commands
+Used to manage containers running through proot
 """
 
 import os
@@ -18,16 +18,16 @@ from datetime import datetime
 import getpass
 from urllib.parse import urlparse
 
-# 导入现有模块
+# Import existing modules
 from .proot_runner import ProotRunner
 from .create_rootfs_tar import DockerImageToRootFS
 
-# 配置日志
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class DockerCLI:
-    """Docker风格的命令行接口"""
+    """Docker-style command-line interface"""
     
     def __init__(self, cache_dir=None):
         self.cache_dir = cache_dir or self._get_default_cache_dir()
@@ -37,61 +37,61 @@ class DockerCLI:
         self._ensure_cache_dir()
         
     def _get_default_cache_dir(self):
-        """获取默认缓存目录"""
+        """Get default cache directory"""
         home_dir = os.path.expanduser('~')
         return os.path.join(home_dir, '.docker_proot_cache')
 
     def _get_config_file_path(self):
-        """获取配置文件的路径"""
+        """Get configuration file path"""
         return os.path.join(self.cache_dir, 'config.json')
 
     def _ensure_cache_dir(self):
-        """确保缓存目录存在"""
+        """Ensure cache directory exists"""
         os.makedirs(self.cache_dir, exist_ok=True)
         
     def _load_containers(self):
-        """加载容器信息"""
+        """Load container information"""
         if os.path.exists(self.containers_file):
             try:
                 with open(self.containers_file, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                logger.warning(f"读取容器信息失败: {e}")
+                logger.warning(f"Failed to read container information: {e}")
         return {}
         
     def _save_containers(self, containers):
-        """保存容器信息"""
+        """Save container information"""
         try:
             with open(self.containers_file, 'w') as f:
                 json.dump(containers, f, indent=2)
         except Exception as e:
-            logger.error(f"保存容器信息失败: {e}")
+            logger.error(f"Failed to save container information: {e}")
 
     def _load_config(self):
-        """加载配置信息，包括认证凭证"""
+        """Load configuration information, including authentication credentials"""
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                logger.warning(f"读取配置文件失败: {e}")
+                logger.warning(f"Failed to read configuration file: {e}")
         return {'auths': {}}
 
     def _save_config(self, config):
-        """保存配置信息"""
+        """Save configuration information"""
         try:
             with open(self.config_file, 'w') as f:
                 json.dump(config, f, indent=2)
         except Exception as e:
-            logger.error(f"保存配置文件失败: {e}")
+            logger.error(f"Failed to save configuration file: {e}")
             
     def _generate_container_id(self):
-        """生成容器ID"""
+        """Generate container ID"""
         import hashlib
         import uuid
         return hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:12]
     def _is_process_running(self, pid):
-        """检查进程是否还在运行"""
+        """Check if process is still running"""
         try:
             os.kill(pid, 0)
             return True
@@ -99,20 +99,20 @@ class DockerCLI:
             return False
 
     def _get_container_dir(self, container_id):
-        """获取容器的持久化数据目录"""
+        """Get persistent data directory for container"""
         return os.path.join(self.cache_dir, 'containers', container_id)
 
     def _get_pid_file(self, container_dir):
-        """获取PID文件路径"""
+        """Get PID file path"""
         return os.path.join(container_dir, 'container.pid')
 
     def _get_log_file(self, container_dir):
-        """获取日志文件路径"""
+        """Get log file path"""
         return os.path.join(container_dir, 'container.log')
 
             
     def login(self, server, username, password):
-        """登录到Docker Registry"""
+        """Login to Docker Registry"""
         if not username:
             username = input("Username: ")
         if not password:
@@ -122,7 +122,7 @@ class DockerCLI:
         if 'auths' not in config:
             config['auths'] = {}
         
-        # 默认服务器为Docker Hub
+        # Default server is Docker Hub
         if not server:
             server = "https://index.docker.io/v1/"
 
@@ -131,37 +131,37 @@ class DockerCLI:
             'password': password # For simplicity, storing plain text.
         }
         self._save_config(config)
-        logger.info(f"登录成功: {server}")
+        logger.info(f"Login successful: {server}")
         return True
 
     def pull(self, image_url, force=False):
-        """拉取镜像"""
-        logger.info(f"拉取镜像: {image_url}")
+        """Pull image"""
+        logger.info(f"Pulling image: {image_url}")
 
-        # 检查是否已缓存
+        # Check if already cached
         if not force and self.runner._is_image_cached(image_url):
             cache_info = self.runner._load_cache_info(image_url)
             if cache_info:
-                logger.info(f"镜像已存在于缓存中")
-                logger.info(f"缓存时间: {cache_info.get('created_time_str', 'Unknown')}")
+                logger.info(f"Image already exists in cache")
+                logger.info(f"Cache time: {cache_info.get('created_time_str', 'Unknown')}")
                 return True
 
-        # 加载凭证
+        # Load credentials
         config = self._load_config()
         auths = config.get('auths', {})
         
-        # 简单的匹配逻辑，实际可能需要更复杂的匹配
-        # 这里我们假设镜像URL的域名部分能匹配到auths中的key
+        # Simple matching logic, might need more complex matching in practice
+        # Here we assume the domain part of image URL can match to keys in auths
         username, password = None, None
         for server, creds in auths.items():
             server_name = urlparse(server).hostname or server
             if server_name in image_url or (server_name == "index.docker.io" and '/' not in image_url.split(':')[0]):
                 username = creds.get('username')
                 password = creds.get('password')
-                logger.info(f"找到 {server} 的凭证")
+                logger.info(f"Found credentials for {server}")
                 break
         
-        # 现在pull直接调用runner的下载方法
+        # Now pull directly calls runner's download method
         cache_path = self.runner._download_image(
             image_url,
             force_download=force,
@@ -170,27 +170,27 @@ class DockerCLI:
         )
 
         if cache_path:
-            logger.info(f"✓ 镜像拉取成功: {image_url}")
+            logger.info(f"✓ Image pulled successfully: {image_url}")
             return True
         else:
-            logger.error(f"✗ 镜像拉取失败: {image_url}")
+            logger.error(f"✗ Image pull failed: {image_url}")
             return False
             
     def run(self, image_url, command=None, name=None, **kwargs):
-        """运行容器"""
-        # 确保在运行前镜像存在
+        """Run container"""
+        # Ensure image exists before running
         if not self.runner._is_image_cached(image_url) or kwargs.get('force_download', False):
-            logger.info(f"镜像不存在或需要强制下载，执行 'pull' 操作...")
+            logger.info(f"Image does not exist or force download required, performing 'pull' operation...")
             pull_success = self.pull(image_url, force=kwargs.get('force_download', False))
             if not pull_success:
-                logger.error(f"无法运行容器，因为镜像拉取失败: {image_url}")
+                logger.error(f"Cannot run container because image pull failed: {image_url}")
                 return None
 
         container_id = name if name else self._generate_container_id()
         container_dir = self._get_container_dir(container_id)
         os.makedirs(container_dir, exist_ok=True)
         
-        # 构建运行参数
+        # Build run arguments
         class Args:
             def __init__(self):
                 self.env = kwargs.get('env', [])
@@ -198,8 +198,8 @@ class DockerCLI:
                 for v in self.bind:
                     host_path = v.split(':')[0]
                     if not os.path.exists(host_path):
-                        # 仅记录警告，而不是中止，因为某些路径可能在容器启动后才可用
-                        logger.warning(f"卷挂载的源路径不存在: {host_path}")
+                        # Only log warning, not abort, as some paths may become available after container starts
+                        logger.warning(f"Volume mount source path does not exist: {host_path}")
                 self.workdir = kwargs.get('workdir')
                 self.detach = kwargs.get('detach', False)
                 self.interactive = kwargs.get('interactive', False)
@@ -222,7 +222,7 @@ class DockerCLI:
             effective_fake_root = None
         args.fake_root = effective_fake_root
 
-        # 记录容器信息
+        # Record container information
         containers = self._load_containers()
         container_info = {
             'id': container_id,
@@ -246,7 +246,7 @@ class DockerCLI:
         containers[container_id] = container_info
         self._save_containers(containers)
 
-        logger.info(f"启动容器: {container_id}")
+        logger.info(f"Starting container: {container_id}")
         
         try:
             # Run container
@@ -276,9 +276,9 @@ class DockerCLI:
                 
             if success:
                 if args.detach:
-                    logger.info(f"容器 {container_id} 已在后台启动")
+                    logger.info(f"Container {container_id} started in background")
                 else:
-                    logger.info(f"容器 {container_id} 运行完成")
+                    logger.info(f"Container {container_id} completed")
                 return container_id
             else:
                 container_info['status'] = 'failed'
@@ -290,33 +290,33 @@ class DockerCLI:
             container_info['status'] = 'interrupted'
             containers[container_id] = container_info
             self._save_containers(containers)
-            logger.info(f"容器 {container_id} 被用户中断")
+            logger.info(f"Container {container_id} interrupted by user")
             return container_id
             
     def _run_detached(self, image_url, args, container_id, container_dir):
-        """后台运行容器, 直接调用proot_runner.py脚本"""
+        """Run container in background, directly calling proot_runner.py script"""
         rootfs_dir = os.path.join(container_dir, 'rootfs')
         pid_file = self._get_pid_file(container_dir)
         log_file = self._get_log_file(container_dir)
 
-        # 构建proot_runner.py的命令行参数
+        # Build command-line arguments for proot_runner.py
         cmd = [
             sys.executable,
             '-m', 'android_docker.proot_runner',
             '--rootfs-dir', rootfs_dir,
             '--pid-file', pid_file,
             '--log-file', log_file,
-            '--cache-dir', self.cache_dir,  # 传递统一的缓存目录
+            '--cache-dir', self.cache_dir,  # Pass unified cache directory
             '--detach',
         ]
         
-        # 统一从args对象获取凭证
+        # Uniformly get credentials from args object
         if hasattr(args, 'username') and args.username:
             cmd.extend(['--username', args.username])
         if hasattr(args, 'password') and args.password:
             cmd.extend(['--password', args.password])
 
-        # 添加从docker_cli传递过来的参数
+        # Add parameters passed from docker_cli
         if args.force_download:
             cmd.append('--force-download')
         if args.workdir:
@@ -328,8 +328,8 @@ class DockerCLI:
         for b in args.bind:
             cmd.extend(['-b', b])
         
-        # 添加镜像URL和命令
-        # 添加 -- 分隔符来区分 proot_runner.py 的参数和容器的命令
+        # Add image URL and command
+        # Add -- separator to distinguish proot_runner.py arguments from container commands
         cmd.append(image_url)
         if args.command:
             cmd.append('--')
@@ -341,7 +341,7 @@ class DockerCLI:
             child_env = os.environ.copy()
             if hasattr(args, 'fake_root') and args.fake_root is not None:
                 child_env[self.runner.FAKE_ROOT_ENV] = '1' if args.fake_root else '0'
-            # 打开日志文件用于重定向输出
+            # Open log file to redirect output
             with open(log_file, 'a') as lf:
                 lf.write(f"--- Starting container at {datetime.now()} ---\\n")
                 process = subprocess.Popen(
@@ -353,9 +353,9 @@ class DockerCLI:
                     env=child_env,
                 )
             
-            # 等待pid文件被创建，最多等待5秒
+            # Wait for pid file to be created, wait up to 5 seconds
             pid = None
-            # 延长等待时间至15秒 (30 * 0.5s)
+            # Extend wait time to 15 seconds (30 * 0.5s)
             for i in range(30):
                 time.sleep(0.5)
                 if os.path.exists(pid_file):
@@ -364,18 +364,18 @@ class DockerCLI:
                         if pid_str:
                             try:
                                 pid = int(pid_str)
-                                logger.debug(f"成功从PID文件获取PID: {pid}")
+                                logger.debug(f"Successfully obtained PID from PID file: {pid}")
                                 break
                             except ValueError:
-                                logger.debug(f"PID文件内容无效: '{pid_str}'，继续等待...")
-                logger.debug(f"等待PID文件... (尝试 {i+1}/30)")
+                                logger.debug(f"Invalid PID file content: '{pid_str}', continuing to wait...")
+                logger.debug(f"Waiting for PID file... (attempt {i+1}/30)")
             
             if not pid:
-                logger.error("无法获取后台进程的PID，启动可能失败。")
-                logger.error(f"请查看日志文件获取更多信息: {log_file}")
+                logger.error("Unable to get PID of background process, startup may have failed.")
+                logger.error(f"Please check log file for more information: {log_file}")
                 return False
 
-            # 更新容器信息
+            # Update container information
             containers = self._load_containers()
             containers[container_id]['status'] = 'running'
             containers[container_id]['pid'] = pid
@@ -384,14 +384,14 @@ class DockerCLI:
             return True
             
         except Exception as e:
-            logger.error(f"启动后台容器失败: {e}")
-            logger.error(f"请查看日志文件获取更多信息: {log_file}")
+            logger.error(f"Failed to start background container: {e}")
+            logger.error(f"Please check log file for more information: {log_file}")
             return False
 
             
     def _cleanup_stale_lock_files(self, rootfs_dir):
-        """在重启前清理常见的陈旧锁文件或PID文件"""
-        logger.debug(f"正在清理根文件系统中的陈旧锁文件: {rootfs_dir}")
+        """Clean up common stale lock or PID files before restart"""
+        logger.debug(f"Cleaning stale lock files in rootfs: {rootfs_dir}")
         lock_dirs = ['run', 'var/run', 'tmp']
         cleaned_files = 0
 
@@ -404,37 +404,37 @@ class DockerCLI:
                             file_path = os.path.join(full_dir_path, filename)
                             try:
                                 os.remove(file_path)
-                                logger.debug(f"已删除陈旧的PID文件: {file_path}")
+                                logger.debug(f"Removed stale PID file: {file_path}")
                                 cleaned_files += 1
                             except OSError as e:
-                                logger.warning(f"删除PID文件失败 {file_path}: {e}")
+                                logger.warning(f"Failed to remove PID file {file_path}: {e}")
                 except Exception as e:
-                    logger.warning(f"扫描目录失败 {full_dir_path}: {e}")
+                    logger.warning(f"Failed to scan directory {full_dir_path}: {e}")
         
         if cleaned_files > 0:
-            logger.info(f"清理了 {cleaned_files} 个陈旧的PID/锁文件。")
+            logger.info(f"Cleaned {cleaned_files} stale PID/lock files.")
         else:
-            logger.debug("未找到需要清理的陈旧PID/锁文件。")
+            logger.debug("No stale PID/lock files found to clean.")
 
     def start(self, container_id):
-        """启动一个已停止的容器，并保持其ID和数据不变"""
+        """Start a stopped container, preserving its ID and data"""
         containers = self._load_containers()
         if container_id not in containers:
-            logger.error(f"容器不存在: {container_id}")
+            logger.error(f"Container does not exist: {container_id}")
             return False
 
         container_info = containers[container_id]
         status = container_info.get('status')
 
         if status == 'running':
-            logger.error(f"容器 {container_id} 已经在运行")
+            logger.error(f"Container {container_id} is already running")
             return False
 
         if status not in ['created', 'exited', 'killed', 'interrupted', 'failed']:
-            logger.error(f"无法启动处于 '{status}' 状态的容器 {container_id}")
+            logger.error(f"Cannot start container {container_id} in '{status}' state")
             return False
 
-        logger.info(f"正在启动容器: {container_id}")
+        logger.info(f"Starting container: {container_id}")
 
         image_url = container_info['image']
         command = container_info['command']
@@ -443,15 +443,15 @@ class DockerCLI:
         container_dir = container_info.get('container_dir')
 
         if not container_dir or not os.path.exists(container_dir):
-            logger.error(f"找不到容器 {container_id} 的数据目录。")
+            logger.error(f"Cannot find data directory for container {container_id}.")
             return False
 
         rootfs_dir = os.path.join(container_dir, 'rootfs')
         if not os.path.exists(rootfs_dir):
-            logger.error(f"找不到容器 {container_id} 的根文件系统。")
+            logger.error(f"Cannot find rootfs for container {container_id}.")
             return False
 
-        # 清理旧的锁文件，这是关键修复
+        # Clean up old lock files, this is key fix
         self._cleanup_stale_lock_files(rootfs_dir)
 
         class Args:
@@ -478,9 +478,9 @@ class DockerCLI:
             success = self._run_detached(image_url, args, container_id, container_dir)
             
             if success:
-                logger.info(f"容器 {container_id} 已成功启动")
+                logger.info(f"Container {container_id} started successfully")
             else:
-                logger.error(f"启动容器 {container_id} 失败")
+                logger.error(f"Failed to start container {container_id}")
 
             return success
         else:
@@ -500,47 +500,47 @@ class DockerCLI:
             return success
 
     def restart(self, container_id):
-        """重启一个容器"""
-        logger.info(f"正在重启容器: {container_id}")
+        """Restart a container"""
+        logger.info(f"Restarting container: {container_id}")
 
-        # 1. 停止容器 (如果正在运行)
+        # 1. Stop container (if running)
         containers = self._load_containers()
         if container_id not in containers:
-            logger.error(f"容器不存在: {container_id}")
+            logger.error(f"Container does not exist: {container_id}")
             return False
 
         status = containers[container_id].get('status')
         if status == 'running':
             stop_success = self.stop(container_id)
             if not stop_success:
-                logger.error(f"无法停止容器 {container_id}，重启失败")
+                logger.error(f"Unable to stop container {container_id}, restart failed")
                 return False
 
-        # 2. 启动容器
+        # 2. Start container
         start_success = self.start(container_id)
         if start_success:
-            logger.info(f"成功重启容器 {container_id}")
+            logger.info(f"Successfully restarted container {container_id}")
         else:
-            logger.error(f"重启容器 {container_id} 失败")
+            logger.error(f"Failed to restart container {container_id}")
 
         return start_success
 
     def logs(self, container_id, follow=False):
-        """显示容器的日志"""
+        """Display container logs"""
         containers = self._load_containers()
         if container_id not in containers:
-            logger.error(f"容器不存在: {container_id}")
+            logger.error(f"Container does not exist: {container_id}")
             return False
 
         container_info = containers[container_id]
         container_dir = container_info.get('container_dir')
         if not container_dir:
-            logger.error(f"找不到容器 {container_id} 的日志文件路径")
+            logger.error(f"Cannot find log file path for container {container_id}")
             return False
             
         log_file = self._get_log_file(container_dir)
         if not os.path.exists(log_file):
-            logger.info(f"容器 {container_id} 没有日志")
+            logger.info(f"Container {container_id} has no logs")
             return True
 
         try:
@@ -564,47 +564,47 @@ class DockerCLI:
             print() # Print a newline after Ctrl+C
             return True
         except Exception as e:
-            logger.error(f"读取日志失败: {e}")
+            logger.error(f"Failed to read logs: {e}")
             return False
 
     def attach(self, container_id):
-        """通过在容器中执行一个交互式shell来附加到容器"""
-        logger.info(f"附加到容器 {container_id} (通过 'exec -it <shell>' 实现)")
-        logger.info("输入 'exit' 或按 Ctrl+D 退出.")
+        """Attach to container by executing an interactive shell in the container"""
+        logger.info(f"Attaching to container {container_id} (implemented via 'exec -it <shell>')")
+        logger.info("Type 'exit' or press Ctrl+D to exit.")
         # Attach is implemented by executing an interactive shell in the container.
         return self.exec(container_id, [], interactive=True)
 
     def exec(self, container_id, command, interactive=False):
-        """在运行中的容器中执行命令"""
+        """Execute command in running container"""
         containers = self._load_containers()
         if container_id not in containers:
-            logger.error(f"容器不存在: {container_id}")
+            logger.error(f"Container does not exist: {container_id}")
             return False
 
         container_info = containers[container_id]
         status = container_info.get('status')
         if status != 'running':
-            logger.error(f"容器 {container_id} 未在运行中")
+            logger.error(f"Container {container_id} is not running")
             return False
 
         pid = container_info.get('pid')
         if not pid:
-            logger.error(f"容器 {container_id} 没有PID信息")
+            logger.error(f"Container {container_id} has no PID information")
             return False
 
         if not self._is_process_running(pid):
-            logger.error(f"容器 {container_id} 进程未运行")
+            logger.error(f"Container {container_id} process is not running")
             return False
 
         # Get container directory and rootfs path
         container_dir = container_info.get('container_dir')
         if not container_dir:
-            logger.error(f"找不到容器 {container_id} 的目录")
+            logger.error(f"Cannot find directory for container {container_id}")
             return False
 
         rootfs_dir = os.path.join(container_dir, 'rootfs')
         if not os.path.exists(rootfs_dir):
-            logger.error(f"找不到容器 {container_id} 的根文件系统")
+            logger.error(f"Cannot find rootfs for container {container_id}")
             return False
 
         # Build exec command using proot
@@ -656,7 +656,7 @@ class DockerCLI:
         # Add the command to execute
         proot_cmd.extend(command)
 
-        logger.info(f"在容器 {container_id} 中执行命令: {' '.join(command)}")
+        logger.info(f"Executing command in container {container_id}: {' '.join(command)}")
         
         try:
             if interactive:
@@ -680,27 +680,27 @@ class DockerCLI:
                 return result.returncode == 0
             return True
         except Exception as e:
-            logger.error(f"执行命令失败: {e}")
+            logger.error(f"Failed to execute command: {e}")
             return False
 
     def ps(self, all_containers=False):
-        """列出容器"""
+        """List containers"""
         containers = self._load_containers()
         
         if not containers:
-            logger.info("没有容器")
+            logger.info("No containers")
             return
             
-        # 更新运行中容器的状态
+        # Update status of running containers
         for container_id, info in containers.items():
             if info.get('status') == 'running' and info.get('pid'):
-                # 对于通过新方法启动的容器，pid是proot进程的真实pid
+                # For containers started via new method, pid is the real pid of proot process
                 if not self._is_process_running(info['pid']):
                     info['status'] = 'exited'
                     info['finished'] = time.time()
                     info['finished_str'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             elif info.get('status') == 'running' and info.get('script_path'):
-                 # 兼容旧的、通过wrapper script启动的容器
+                 # Compatible with old containers started via wrapper script
                 if not self._is_process_running(info['pid']):
                     info['status'] = 'exited'
                     info['finished'] = time.time()
@@ -709,16 +709,16 @@ class DockerCLI:
         
         self._save_containers(containers)
         
-        # 过滤容器
+        # Filter containers
         if not all_containers:
             containers = {k: v for k, v in containers.items() 
                          if v.get('status') in ['running', 'created']}
             
         if not containers:
-            logger.info("没有运行中的容器")
+            logger.info("No running containers")
             return
             
-        # 显示容器列表
+        # Display container list
         print(f"{'CONTAINER ID':<12} {'IMAGE':<30} {'COMMAND':<20} {'CREATED':<20} {'STATUS':<10}")
         print("-" * 100)
         
@@ -731,66 +731,66 @@ class DockerCLI:
             print(f"{container_id:<12} {image:<30} {command:<20} {created:<20} {status:<10}")
             
     def images(self):
-        """列出镜像"""
-        logger.info("列出缓存的镜像:")
+        """List images"""
+        logger.info("Listing cached images:")
         self.runner.list_cache()
     
     def load(self, tar_path):
-        """从tar归档文件加载镜像"""
+        """Load image from tar archive"""
         from .image_loader import LocalImageLoader
         
-        logger.info(f"从tar文件加载镜像: {tar_path}")
+        logger.info(f"Loading image from tar file: {tar_path}")
         
-        # 创建加载器
+        # Create loader
         loader = LocalImageLoader(self.cache_dir)
         
-        # 加载镜像
+        # Load image
         success, image_name, error_msg = loader.load_image(tar_path)
         
         if success:
-            logger.info(f"✓ 成功加载镜像: {image_name}")
-            # 显示更新后的镜像列表
-            logger.info("\n当前镜像列表:")
+            logger.info(f"✓ Successfully loaded image: {image_name}")
+            # Display updated image list
+            logger.info("\nCurrent image list:")
             self.images()
             return True
         else:
-            logger.error(f"✗ 加载镜像失败: {error_msg}")
+            logger.error(f"✗ Failed to load image: {error_msg}")
             return False
         
     def rmi(self, image_url):
-        """删除镜像"""
-        logger.info(f"删除镜像: {image_url}")
+        """Remove image"""
+        logger.info(f"Removing image: {image_url}")
         try:
             self.runner.clear_cache(image_url)
             return True
         except Exception as e:
-            logger.error(f"删除镜像失败: {e}")
+            logger.error(f"Failed to remove image: {e}")
             return False
         
     def stop(self, container_id):
-        """停止容器"""
+        """Stop container"""
         containers = self._load_containers()
         
         if container_id not in containers:
-            logger.error(f"容器不存在: {container_id}")
+            logger.error(f"Container does not exist: {container_id}")
             return False
             
         container_info = containers[container_id]
         pid = container_info.get('pid')
         
         if pid and not self._is_process_running(pid):
-            logger.info(f"容器 {container_id} 进程已停止，更新状态为 'exited'")
+            logger.info(f"Container {container_id} process already stopped, updating status to 'exited'")
             container_info['status'] = 'exited'
             container_info['finished'] = time.time()
             container_info['finished_str'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self._save_containers(containers)
             return True
 
-        # 如果没有PID，或者PID对应的进程没有运行，并且容器状态不是运行中，则直接认为已停止
+        # If no PID, or the process corresponding to PID is not running, and container status is not running, consider it already stopped
         if not pid or not self._is_process_running(pid):
             if container_info.get('status') in ['exited', 'killed', 'failed', 'created']:
-                logger.info(f"容器 {container_id} 已经停止或处于非运行状态 ({container_info.get('status')}).")
-                # 确保状态被正确更新，即使PID缺失
+                logger.info(f"Container {container_id} is already stopped or in non-running state ({container_info.get('status')}).")
+                # Ensure status is correctly updated even if PID is missing
                 if container_info.get('status') != 'exited':
                     container_info['status'] = 'exited'
                     container_info['finished'] = time.time()
@@ -798,23 +798,23 @@ class DockerCLI:
                     self._save_containers(containers)
                 return True
             else:
-                logger.warning(f"容器 {container_id} 没有有效的PID信息或进程未运行，但状态为 {container_info.get('status')}. 尝试强制停止.")
-                # 对于那些状态异常（如'running'但无PID或进程），尝试强制清理
-                # 这部分逻辑需要非常小心，以避免误删数据
-                # 对于docker-compose down场景，如果stop失败，rm会接管清理工作
-                # 所以这里主要目的是让stop返回True，让rm可以继续执行
-                container_info['status'] = 'exited' # 强制标记为已退出，以便rm可以处理
+                logger.warning(f"Container {container_id} has no valid PID info or process not running, but status is {container_info.get('status')}. Attempting force stop.")
+                # For abnormal status (e.g., 'running' but no PID or process), attempt force cleanup
+                # This logic needs to be very careful to avoid accidentally deleting data
+                # For docker-compose down scenario, if stop fails, rm will take over cleanup
+                # So the main purpose here is to make stop return True, allowing rm to proceed
+                container_info['status'] = 'exited' # Force mark as exited so rm can handle it
                 container_info['finished'] = time.time()
                 container_info['finished_str'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 self._save_containers(containers)
                 return True
             
         try:
-            # 发送SIGTERM信号到整个进程组
+            # Send SIGTERM signal to the entire process group
             os.killpg(pid, signal.SIGTERM)
-            logger.info(f"已发送停止信号给容器进程组 {container_id} (PGID: {pid})")
+            logger.info(f"Sent stop signal to container process group {container_id} (PGID: {pid})")
             
-            # 等待一段时间后检查是否停止
+            # Check if stopped after waiting
             time.sleep(2)
             if not self._is_process_running(pid):
                 container_info['status'] = 'exited'
@@ -822,10 +822,10 @@ class DockerCLI:
                 container_info['finished_str'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 containers[container_id] = container_info
                 self._save_containers(containers)
-                logger.info(f"容器 {container_id} 已停止")
+                logger.info(f"Container {container_id} stopped")
                 return True
             else:
-                logger.warning(f"容器 {container_id} 未响应SIGTERM，尝试SIGKILL")
+                logger.warning(f"Container {container_id} did not respond to SIGTERM, trying SIGKILL")
                 os.killpg(pid, signal.SIGKILL)
                 container_info['status'] = 'killed'
                 containers[container_id] = container_info
@@ -833,57 +833,57 @@ class DockerCLI:
                 return True
                 
         except (OSError, ProcessLookupError) as e:
-            logger.error(f"停止容器失败: {e}")
+            logger.error(f"Failed to stop container: {e}")
             return False
             
     def rm(self, container_id, force=False):
-        """删除容器"""
+        """Remove container"""
         containers = self._load_containers()
         
         if container_id not in containers:
-            logger.error(f"容器不存在: {container_id}")
+            logger.error(f"Container does not exist: {container_id}")
             return False
             
         container_info = containers[container_id]
         
-        # 检查容器是否在运行
-        # 更新状态以防万一
+        # Check if container is running
+        # Update status just in case
         if container_info.get('status') == 'running' and container_info.get('pid'):
             if not self._is_process_running(container_info['pid']):
                 container_info['status'] = 'exited'
         
         if container_info.get('status') == 'running':
             if not force:
-                logger.error(f"容器 {container_id} 正在运行，使用 --force 强制删除")
+                logger.error(f"Container {container_id} is running, use --force to force removal")
                 return False
             else:
-                # 强制停止容器
-                logger.info(f"强制停止容器: {container_id}")
+                # Force stop container
+                logger.info(f"Force stopping container: {container_id}")
                 self.stop(container_id)
-                # 重新加载信息
+                # Reload information
                 containers = self._load_containers()
                 container_info = containers.get(container_id, {})
                 if not container_info:
-                    logger.info(f"容器 {container_id} 在停止后已被移除")
+                    logger.info(f"Container {container_id} was removed after stopping")
                     return True
                 
-        # 清理容器的持久化目录
+        # Clean up container's persistent directory
         container_dir = container_info.get('container_dir')
         if container_dir and os.path.isdir(container_dir):
             try:
                 import shutil
                 shutil.rmtree(container_dir)
-                logger.debug(f"已清理容器目录: {container_dir}")
+                logger.debug(f"Cleaned container directory: {container_dir}")
                 
-                # 清理writable_dirs（如果存在）
+                # Clean up writable_dirs (if exists)
                 writable_dirs_path = os.path.join(os.path.dirname(container_dir), 'writable_dirs')
                 if os.path.isdir(writable_dirs_path):
                     shutil.rmtree(writable_dirs_path)
-                    logger.debug(f"已清理可写目录: {writable_dirs_path}")
+                    logger.debug(f"Cleaned writable directory: {writable_dirs_path}")
             except OSError as e:
-                logger.warning(f"清理容器目录失败 {container_dir}: {e}")
+                logger.warning(f"Failed to clean container directory {container_dir}: {e}")
 
-        # 兼容旧的清理逻辑
+        # Compatible with old cleanup logic
         rootfs_dir = container_info.get('rootfs_dir')
         if rootfs_dir and os.path.isdir(rootfs_dir):
             try:
@@ -899,145 +899,145 @@ class DockerCLI:
             except OSError:
                 pass
                 
-        # 删除容器记录
+        # Delete container record
         if container_id in containers:
             del containers[container_id]
             self._save_containers(containers)
         
-        logger.info(f"容器 {container_id} 已删除")
+        logger.info(f"Container {container_id} removed")
         return True
 
 def create_parser():
-    """创建命令行解析器"""
+    """Create command-line parser"""
     parser = argparse.ArgumentParser(
         prog='docker',
-        description='Docker风格的proot容器管理工具',
+        description='Docker-style proot container management tool',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
-  # 拉取镜像
+Examples:
+  # Pull image
   %(prog)s pull alpine:latest
   %(prog)s pull nginx:alpine
 
-  # 从本地tar文件加载镜像
+  # Load image from local tar file
   %(prog)s load -i alpine.tar
 
-  # 运行容器
+  # Run container
   %(prog)s run alpine:latest
   %(prog)s run -d nginx:alpine
   %(prog)s run -it alpine:latest /bin/sh
   %(prog)s run -e "API_KEY=123" -v /host:/container alpine:latest /bin/sh
 
-  # 查看容器
+  # View containers
   %(prog)s ps
   %(prog)s ps -a
 
-  # 查看镜像
+  # View images
   %(prog)s images
 
-  # 停止和删除容器
+  # Stop and remove container
   %(prog)s stop <container_id>
   %(prog)s rm <container_id>
 
-  # 附加到运行中的容器
+  # Attach to running container
   %(prog)s attach <container_id>
 
-  # 在运行中的容器中执行命令
+  # Execute command in running container
   %(prog)s exec <container_id> ls -l
   %(prog)s exec -it <container_id> /bin/sh
 
-  # 删除镜像
+  # Remove image
   %(prog)s rmi alpine:latest
         """
     )
 
     parser.add_argument(
         '--cache-dir',
-        help='指定缓存目录路径'
+        help='Specify cache directory path'
     )
 
     parser.add_argument(
         '--verbose',
         action='store_true',
-        help='显示详细日志'
+        help='Show verbose logs'
     )
 
-    subparsers = parser.add_subparsers(dest='subcommand', help='可用命令', required=True)
+    subparsers = parser.add_subparsers(dest='subcommand', help='Available commands', required=True)
 
-    # login 命令
-    login_parser = subparsers.add_parser('login', help='登录到Docker Registry')
-    login_parser.add_argument('server', nargs='?', default=None, help='Registry服务器地址 (默认为Docker Hub)')
-    login_parser.add_argument('-u', '--username', help='用户名')
-    login_parser.add_argument('-p', '--password', help='密码')
+    # login command
+    login_parser = subparsers.add_parser('login', help='Login to Docker Registry')
+    login_parser.add_argument('server', nargs='?', default=None, help='Registry server address (defaults to Docker Hub)')
+    login_parser.add_argument('-u', '--username', help='Username')
+    login_parser.add_argument('-p', '--password', help='Password')
 
-    # pull 命令
-    pull_parser = subparsers.add_parser('pull', help='拉取镜像')
-    pull_parser.add_argument('image', help='镜像URL')
-    pull_parser.add_argument('--force', action='store_true', help='强制重新下载')
+    # pull command
+    pull_parser = subparsers.add_parser('pull', help='Pull image')
+    pull_parser.add_argument('image', help='Image URL')
+    pull_parser.add_argument('--force', action='store_true', help='Force re-download')
 
-    # run 命令
-    run_parser = subparsers.add_parser('run', help='运行容器')
-    run_parser.add_argument('image', help='镜像URL')
-    run_parser.add_argument('--name', help='为容器指定一个名称')
-    run_parser.add_argument('command', nargs='*', help='要执行的命令')
-    run_parser.add_argument('-d', '--detach', action='store_true', help='后台运行')
-    run_parser.add_argument('-it', '--interactive-tty', action='store_true', help='交互式运行容器 (分配伪TTY并保持stdin打开)')
-    run_parser.add_argument('-e', '--env', action='append', default=[], help='环境变量 (KEY=VALUE)')
-    run_parser.add_argument('-v', '--volume', dest='bind', action='append', default=[], help='挂载卷 (HOST:CONTAINER)')
-    run_parser.add_argument('-w', '--workdir', help='工作目录')
-    run_parser.add_argument('--force-download', action='store_true', help='强制重新下载镜像')
+    # run command
+    run_parser = subparsers.add_parser('run', help='Run container')
+    run_parser.add_argument('image', help='Image URL')
+    run_parser.add_argument('--name', help='Assign a name to the container')
+    run_parser.add_argument('command', nargs='*', help='Command to execute')
+    run_parser.add_argument('-d', '--detach', action='store_true', help='Run in background')
+    run_parser.add_argument('-it', '--interactive-tty', action='store_true', help='Run container interactively (allocate pseudo-TTY and keep stdin open)')
+    run_parser.add_argument('-e', '--env', action='append', default=[], help='Environment variable (KEY=VALUE)')
+    run_parser.add_argument('-v', '--volume', dest='bind', action='append', default=[], help='Mount volume (HOST:CONTAINER)')
+    run_parser.add_argument('-w', '--workdir', help='Working directory')
+    run_parser.add_argument('--force-download', action='store_true', help='Force re-download image')
 
-    # start 命令
-    start_parser = subparsers.add_parser('start', help='启动一个已停止的容器')
-    start_parser.add_argument('container', help='容器ID')
+    # start command
+    start_parser = subparsers.add_parser('start', help='Start a stopped container')
+    start_parser.add_argument('container', help='Container ID')
 
-    # restart 命令
-    restart_parser = subparsers.add_parser('restart', help='重启一个容器')
-    restart_parser.add_argument('container', help='容器ID')
+    # restart command
+    restart_parser = subparsers.add_parser('restart', help='Restart a container')
+    restart_parser.add_argument('container', help='Container ID')
 
-    # ps 命令
-    ps_parser = subparsers.add_parser('ps', help='列出容器')
-    ps_parser.add_argument('-a', '--all', action='store_true', help='显示所有容器（包括已停止的）')
+    # ps command
+    ps_parser = subparsers.add_parser('ps', help='List containers')
+    ps_parser.add_argument('-a', '--all', action='store_true', help='Show all containers (including stopped)')
 
-    # logs 命令
-    logs_parser = subparsers.add_parser('logs', help='查看容器日志')
-    logs_parser.add_argument('container', help='容器ID')
-    logs_parser.add_argument('-f', '--follow', action='store_true', help='持续输出日志')
+    # logs command
+    logs_parser = subparsers.add_parser('logs', help='View container logs')
+    logs_parser.add_argument('container', help='Container ID')
+    logs_parser.add_argument('-f', '--follow', action='store_true', help='Continuously output logs')
 
-    # images 命令
-    subparsers.add_parser('images', help='列出镜像')
+    # images command
+    subparsers.add_parser('images', help='List images')
 
-    # rmi 命令
-    rmi_parser = subparsers.add_parser('rmi', help='删除镜像')
-    rmi_parser.add_argument('image', help='镜像URL')
+    # rmi command
+    rmi_parser = subparsers.add_parser('rmi', help='Remove image')
+    rmi_parser.add_argument('image', help='Image URL')
 
-    # stop 命令
-    stop_parser = subparsers.add_parser('stop', help='停止容器')
-    stop_parser.add_argument('container', help='容器ID')
+    # stop command
+    stop_parser = subparsers.add_parser('stop', help='Stop container')
+    stop_parser.add_argument('container', help='Container ID')
 
-    # rm 命令
-    rm_parser = subparsers.add_parser('rm', help='删除容器')
-    rm_parser.add_argument('container', help='容器ID')
-    rm_parser.add_argument('-f', '--force', action='store_true', help='强制删除运行中的容器')
+    # rm command
+    rm_parser = subparsers.add_parser('rm', help='Remove container')
+    rm_parser.add_argument('container', help='Container ID')
+    rm_parser.add_argument('-f', '--force', action='store_true', help='Force remove running container')
     
-    # attach 命令
-    attach_parser = subparsers.add_parser('attach', help='附加到运行中的容器并查看输出')
-    attach_parser.add_argument('container', help='容器ID')
+    # attach command
+    attach_parser = subparsers.add_parser('attach', help='Attach to running container and view output')
+    attach_parser.add_argument('container', help='Container ID')
     
-    # exec 命令
-    exec_parser = subparsers.add_parser('exec', help='在运行中的容器中执行命令')
-    exec_parser.add_argument('container', help='容器ID')
-    exec_parser.add_argument('command', nargs='*', help='要执行的命令')
-    exec_parser.add_argument('-it', '--interactive-tty', action='store_true', help='交互式运行容器 (分配伪TTY并保持stdin打开)')
+    # exec command
+    exec_parser = subparsers.add_parser('exec', help='Execute command in running container')
+    exec_parser.add_argument('container', help='Container ID')
+    exec_parser.add_argument('command', nargs='*', help='Command to execute')
+    exec_parser.add_argument('-it', '--interactive-tty', action='store_true', help='Run container interactively (allocate pseudo-TTY and keep stdin open)')
 
-    # load 命令
-    load_parser = subparsers.add_parser('load', help='从tar归档文件加载镜像')
-    load_parser.add_argument('-i', '--input', required=True, help='输入tar文件路径')
+    # load command
+    load_parser = subparsers.add_parser('load', help='Load image from tar archive')
+    load_parser.add_argument('-i', '--input', required=True, help='Input tar file path')
 
     return parser
 
 def main():
-    """主函数"""
+    """Main function"""
     parser = create_parser()
     args, unknown = parser.parse_known_args()
 
@@ -1055,12 +1055,12 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # 如果没有指定命令，显示帮助
+    # If no command specified, show help
     if not args.subcommand:
         parser.print_help()
         return
 
-    # 创建CLI实例
+    # Create CLI instance
     cli = DockerCLI(cache_dir=args.cache_dir)
 
     try:
@@ -1073,7 +1073,7 @@ def main():
             sys.exit(0 if success else 1)
 
         elif args.subcommand == 'run':
-            # 在调用run之前加载凭证并附加到kwargs
+            # Load credentials before calling run and attach to kwargs
             config = cli._load_config()
             auths = config.get('auths', {})
             username, password = None, None
@@ -1142,15 +1142,15 @@ def main():
             sys.exit(0 if success else 1)
 
         else:
-            logger.error(f"未知命令: {args.subcommand}")
+            logger.error(f"Unknown command: {args.subcommand}")
             parser.print_help()
             sys.exit(1)
 
     except KeyboardInterrupt:
-        logger.info("用户中断")
+        logger.info("User interrupted")
         sys.exit(130)
     except Exception as e:
-        logger.error(f"执行失败: {e}")
+        logger.error(f"Execution failed: {e}")
         if args.verbose:
             import traceback
             traceback.print_exc()

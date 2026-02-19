@@ -9,12 +9,12 @@ import sys
 import time
 import logging
 
-# 配置日志
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def run_docker_cli_command(command, args, cache_dir=None, detach=False):
-    # 直接通过模块化方式调用 docker_cli
+    # Call docker_cli directly through modular approach
     base_cmd = [sys.executable, '-m', 'android_docker.docker_cli']
     if cache_dir:
         base_cmd.extend(['--cache-dir', cache_dir])
@@ -22,10 +22,10 @@ def run_docker_cli_command(command, args, cache_dir=None, detach=False):
     logger.info(f"Executing: {' '.join(cmd)}")
     try:
         if detach:
-            # 使用 Popen 启动后台进程，不等待其完成
+            # Use Popen to start background process without waiting for completion
             subprocess.Popen(cmd)
         else:
-            # 使用 run 等待前台进程完成
+            # Use run to wait for foreground process completion
             subprocess.run(cmd, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         logger.error(f"Command failed: {e}")
@@ -91,13 +91,13 @@ def main():
     )
     parser.add_argument(
         '--cache-dir',
-        help='指定docker cli使用的缓存目录'
+        help='Specify cache directory used by docker cli'
     )
  
     subparsers = parser.add_subparsers(dest='command', required=True)
 
     up_parser = subparsers.add_parser('up', help='Create and start containers')
-    up_parser.add_argument('-d', '--detach', action='store_true', help='后台运行容器')
+    up_parser.add_argument('-d', '--detach', action='store_true', help='Run containers in background')
     up_parser.set_defaults(func=cmd_up)
 
     down_parser = subparsers.add_parser('down', help='Stop and remove containers')

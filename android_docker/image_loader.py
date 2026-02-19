@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-本地镜像加载器
-用于从本地tar文件加载Docker镜像到缓存
+Local Image Loader
+Used to load Docker images from local tar files into cache
 """
 
 import os
@@ -16,86 +16,86 @@ logger = logging.getLogger(__name__)
 
 
 class LocalImageLoader:
-    """处理从本地tar归档文件加载Docker镜像"""
+    """Handle loading Docker images from local tar archive files"""
     
     def __init__(self, cache_dir):
         """
-        初始化加载器
+        Initialize the loader
         
         Args:
-            cache_dir: 缓存目录路径
+            cache_dir: Cache directory path
         """
         self.cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
     
     def load_image(self, tar_path):
         """
-        从tar文件加载镜像
+        Load image from tar file
         
         Args:
-            tar_path: Docker镜像tar归档文件的路径
+            tar_path: Path to Docker image tar archive file
             
         Returns:
             tuple: (success: bool, image_name: str, error_message: str)
         """
-        # 验证文件存在
+        # Verify file exists
         if not os.path.exists(tar_path):
-            return False, None, f"文件不存在: {tar_path}"
+            return False, None, f"File does not exist: {tar_path}"
         
-        # 验证tar结构
+        # Validate tar structure
         is_valid, error_msg = self._validate_tar_structure(tar_path)
         if not is_valid:
             return False, None, error_msg
         
         try:
-            # 提取镜像信息
+            # Extract image information
             with tarfile.open(tar_path, 'r') as tar:
-                # 读取manifest.json
+                # Read manifest.json
                 manifest_member = tar.getmember('manifest.json')
                 manifest_file = tar.extractfile(manifest_member)
                 manifest_data = json.load(manifest_file)
                 
                 if not manifest_data or len(manifest_data) == 0:
-                    return False, None, "manifest.json为空或格式无效"
+                    return False, None, "manifest.json is empty or invalid format"
                 
-                # 获取第一个镜像的信息
+                # Get information for the first image
                 image_info = manifest_data[0]
                 repo_tags = image_info.get('RepoTags', [])
                 
                 if not repo_tags:
-                    # 如果没有RepoTags，使用配置文件的hash作为名称
+                    # If no RepoTags, use config file hash as name
                     config_file = image_info.get('Config', '')
                     image_name = f"<none>:<none>_{config_file[:12]}"
                 else:
                     image_name = repo_tags[0]
                 
-                # 提取到缓存
+                # Extract to cache
                 cache_path = self._extract_to_cache(tar_path, image_name, tar)
                 
-                # 注册镜像
+                # Register image
                 self._register_image(image_name, cache_path, tar_path)
                 
-                logger.info(f"✓ 成功加载镜像: {image_name}")
+                logger.info(f"✓ Successfully loaded image: {image_name}")
                 return True, image_name, None
                 
         except tarfile.ReadError as e:
-            return False, None, f"损坏的tar归档文件: {tar_path} - {str(e)}"
+            return False, None, f"Corrupted tar archive file: {tar_path} - {str(e)}"
         except PermissionError as e:
-            return False, None, f"权限被拒绝: 无法读取 {tar_path} - {str(e)}"
+            return False, None, f"Permission denied: Unable to read {tar_path} - {str(e)}"
         except Exception as e:
-            return False, None, f"加载镜像失败: {str(e)}"
+            return False, None, f"Failed to load image: {str(e)}"
     
     def _validate_tar_structure(self, tar_path):
         """
-        验证tar包含所需的Docker镜像文件
+        Validate that tar contains required Docker image files
         
-        必需文件:
+        Required files:
         - manifest.json
-        - <layer>.tar 文件
+        - <layer>.tar files
         - <config>.json
         
         Args:
-            tar_path: tar文件路径
+            tar_path: tar file path
             
         Returns:
             tuple: (is_valid: bool, error_message: str)
@@ -104,90 +104,90 @@ class LocalImageLoader:
             with tarfile.open(tar_path, 'r') as tar:
                 members = tar.getnames()
                 
-                # 检查manifest.json
+                # Check manifest.json
                 if 'manifest.json' not in members:
-                    return False, "无效的Docker镜像tar: 缺少manifest.json"
+                    return False, "Invalid Docker image tar: missing manifest.json"
                 
-                # 读取manifest以验证结构
+                # Read manifest to validate structure
                 manifest_member = tar.getmember('manifest.json')
                 manifest_file = tar.extractfile(manifest_member)
                 manifest_data = json.load(manifest_file)
                 
                 if not manifest_data or len(manifest_data) == 0:
-                    return False, "无效的Docker镜像tar: manifest.json为空"
+                    return False, "Invalid Docker image tar: manifest.json is empty"
                 
                 image_info = manifest_data[0]
                 
-                # 检查配置文件
+                # Check config file
                 config_file = image_info.get('Config')
                 if not config_file:
-                    return False, "无效的Docker镜像tar: manifest中缺少Config字段"
+                    return False, "Invalid Docker image tar: missing Config field in manifest"
                 
                 if config_file not in members:
-                    return False, f"无效的Docker镜像tar: 缺少配置文件 {config_file}"
+                    return False, f"Invalid Docker image tar: missing config file {config_file}"
                 
-                # 检查层文件
+                # Check layer files
                 layers = image_info.get('Layers', [])
                 if not layers:
-                    return False, "无效的Docker镜像tar: manifest中缺少Layers字段"
+                    return False, "Invalid Docker image tar: missing Layers field in manifest"
                 
                 for layer in layers:
                     if layer not in members:
-                        return False, f"无效的Docker镜像tar: 缺少层文件 {layer}"
+                        return False, f"Invalid Docker image tar: missing layer file {layer}"
                 
                 return True, None
                 
         except tarfile.ReadError:
-            return False, f"损坏的tar归档文件: {tar_path}"
+            return False, f"Corrupted tar archive file: {tar_path}"
         except json.JSONDecodeError:
-            return False, "无效的Docker镜像tar: manifest.json不是有效的JSON"
+            return False, "Invalid Docker image tar: manifest.json is not valid JSON"
         except Exception as e:
-            return False, f"验证tar结构失败: {str(e)}"
+            return False, f"Failed to validate tar structure: {str(e)}"
     
     def _extract_to_cache(self, tar_path, image_name, tar):
         """
-        提取tar到缓存目录，使用适当的命名
+        Extract tar to cache directory with appropriate naming
         
         Args:
-            tar_path: 原始tar文件路径
-            image_name: 镜像名称
-            tar: 已打开的tarfile对象
+            tar_path: Original tar file path
+            image_name: Image name
+            tar: Opened tarfile object
             
         Returns:
-            str: 缓存文件路径
+            str: Cache file path
         """
-        # 生成缓存文件名
-        # 使用镜像名称和tar文件内容的hash
+        # Generate cache filename
+        # Use image name and tar file content hash
         with open(tar_path, 'rb') as f:
             file_hash = hashlib.sha256(f.read()).hexdigest()[:16]
         
-        # 清理镜像名称用于文件名
+        # Clean image name for filename
         safe_name = image_name.replace(':', '_').replace('/', '_').replace('<', '').replace('>', '')
         cache_filename = f"{safe_name}_{file_hash}.tar.gz"
         cache_path = os.path.join(self.cache_dir, cache_filename)
         
-        # 如果已存在，先删除旧的
+        # If already exists, delete old one first
         if os.path.exists(cache_path):
-            logger.info(f"镜像已存在，将更新: {cache_path}")
+            logger.info(f"Image already exists, will update: {cache_path}")
             os.remove(cache_path)
         
-        # 复制tar文件到缓存（保持原格式或转换为.tar.gz）
-        # 为了简单起见，直接复制原文件
+        # Copy tar file to cache (keep original format or convert to .tar.gz)
+        # For simplicity, just copy the original file
         shutil.copy2(tar_path, cache_path)
         
-        logger.info(f"镜像已提取到缓存: {cache_path}")
+        logger.info(f"Image extracted to cache: {cache_path}")
         return cache_path
     
     def _register_image(self, image_name, cache_path, original_tar):
         """
-        在本地镜像列表中注册加载的镜像
+        Register loaded image in local image list
         
         Args:
-            image_name: 镜像名称
-            cache_path: 缓存文件路径
-            original_tar: 原始tar文件路径
+            image_name: Image name
+            cache_path: Cache file path
+            original_tar: Original tar file path
         """
-        # 创建或更新镜像信息文件
+        # Create or update image info file
         info_path = cache_path + '.info'
         
         import time
@@ -206,4 +206,4 @@ class LocalImageLoader:
         with open(info_path, 'w') as f:
             json.dump(info_data, f, indent=2)
         
-        logger.info(f"镜像已注册: {image_name}")
+        logger.info(f"Image registered: {image_name}")
