@@ -53,22 +53,22 @@ containers.
 
 ## 🛠 Installation
 
-### Install Latest Version
+### Install
 
 ``` bash
 curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/install.sh | sh
 ```
 
-### Install Specific Version
+### Update
 
 ``` bash
-curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/v1.1.0/scripts/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/update.sh | sh
 ```
 
-### Install via Environment Variable
+### Uninstall
 
 ``` bash
-INSTALL_VERSION=v1.2.0 curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/install.sh | sh
+INSTALL_VERSION=v1.2.0 curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/uninstall.sh | sh
 ```
 
 After installation:
