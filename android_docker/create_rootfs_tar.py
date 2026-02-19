@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-使用curl和Python制作根文件系统tar包的脚本
-用于在Android Termux中通过proot执行Docker镜像
-无需requests库和umoci，只需要curl命令行工具和Python标准库
+Script to create root filesystem tar package using curl and Python
+Used to execute Docker images in Android Termux via proot
+No need for requests library and umoci, only requires curl command-line tool and Python standard library
 """
 
 import os
@@ -21,12 +21,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 import platform
 
-# 配置日志
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class DockerRegistryClient:
-    """Docker Registry API客户端，使用curl下载镜像"""
+    """Docker Registry API client, downloads images using curl"""
 
     def __init__(self, registry_url, image_name, tag='latest', username=None, password=None):
         self.registry_url = registry_url
@@ -38,9 +38,9 @@ class DockerRegistryClient:
         self.password = password
 
     def _run_curl_command(self, cmd, print_cmd=True):
-        """执行并打印curl命令"""
+        """Execute and print curl command"""
         if print_cmd:
-            # 为了安全，打印命令时隐藏密码
+            # For security, hide password when printing command
             safe_cmd = []
             i = 0
             while i < len(cmd):
@@ -49,30 +49,30 @@ class DockerRegistryClient:
                     safe_cmd.append(f"{cmd[i+1].split(':')[0]}:***")
                     i += 1
                 i += 1
-            logger.info(f"---\n[ 执行命令 ]\n{' '.join(safe_cmd)}\n---")
+            logger.info(f"---\n[ Executing command ]\n{' '.join(safe_cmd)}\n---")
         
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             if not result.stdout and not result.stderr:
-                # 记录警告而不是抛出异常，以增加网络弹性
-                logger.warning(f"curl命令返回空响应: {' '.join(cmd)}")
+                # Log warning instead of throwing exception to increase network resilience
+                logger.warning(f"curl command returned empty response: {' '.join(cmd)}")
             return result
         except subprocess.CalledProcessError as e:
-            logger.error(f"!!! curl命令执行失败 (错误码: {e.returncode}) !!!")
+            logger.error(f"!!! curl command failed (error code: {e.returncode}) !!!")
             logger.error(f"""---
-[ 错误输出 ]
+[ Error output ]
 ---\n{e.stderr.strip()}""")
             raise
 
     def _get_auth_token(self, www_authenticate_header):
-        """从WWW-Authenticate头获取认证token"""
+        """Obtain authentication token from WWW-Authenticate header"""
         if not www_authenticate_header:
             return None
 
-        # 解析Bearer token信息
+        # Parse Bearer token information
         if www_authenticate_header.startswith('Bearer '):
             auth_info = {}
-            bearer_info = www_authenticate_header[7:]  # 移除'Bearer '
+            bearer_info = www_authenticate_header[7:]  # Remove 'Bearer '
 
             for item in bearer_info.split(','):
                 if '=' in item:
@@ -80,7 +80,7 @@ class DockerRegistryClient:
                     auth_info[key.strip()] = value.strip('"')
 
             if 'realm' in auth_info:
-                # 构建认证URL
+                # Build authentication URL
                 auth_url = auth_info['realm']
                 params = []
                 if 'service' in auth_info:
@@ -91,38 +91,38 @@ class DockerRegistryClient:
                 if params:
                     auth_url += '?' + '&'.join(params)
 
-                # 使用curl获取token
+                # Use curl to obtain token
                 try:
-                    cmd = ['curl', '-v'] # Token获取不需要-i
+                    cmd = ['curl', '-v'] # Token retrieval doesn't need -i
                     if self.username and self.password:
                         cmd.extend(['-u', f'{self.username}:{self.password}'])
                     cmd.extend(['-H', f'User-Agent: {self.user_agent}', auth_url])
                     
-                    # 为了简单起见，我们直接调用，不再通过_run_curl_command
-                    # 因为代理已经通过环境变量设置
+                    # For simplicity, we call directly without going through _run_curl_command
+                    # because proxy has already been set via environment variables
                     logger.info("""---
-[ 步骤 2/3: 获取认证Token ]
+[ Step 2/3: Obtaining authentication token ]
 ---""")
                     result = self._run_curl_command(cmd)
                     token_data = json.loads(result.stdout)
                     return token_data.get('token')
                 except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
-                    logger.warning(f"获取认证token失败: {e}")
-                    # 在失败时打印可手动执行的命令
+                    logger.warning(f"Failed to obtain authentication token: {e}")
+                    # Print command that can be manually executed on failure
                     if isinstance(e, subprocess.CalledProcessError):
-                        logger.warning(f"您可以手动运行以下命令测试token获取:\n{' '.join(cmd)}")
+                        logger.warning(f"You can manually run the following command to test token retrieval:\n{' '.join(cmd)}")
                     return None
 
         return None
 
     def _make_registry_request(self, path, headers=None, output_file=None):
-        """向registry发送请求，处理认证"""
-        # 步骤1：先发一个请求获取认证头
+        """Send request to registry, handle authentication"""
+        # Step 1: Send an initial request to obtain authentication header
         if not self.auth_token:
             url = f"{self.registry_url}/v2/{path}"
             cmd = ['curl', '-v', '-i', '--insecure', url]
             logger.info("""---
-[ 步骤 1/3: 探测认证服务器 ]
+[ Step 1/3: Detecting authentication server ]
 ---""")
             result = self._run_curl_command(cmd)
             
@@ -133,17 +133,17 @@ class DockerRegistryClient:
                     break
             
             if auth_header:
-                # 步骤2：使用认证头获取token
+                # Step 2: Use authentication header to obtain token
                 token = self._get_auth_token(auth_header)
                 if token:
                     self.auth_token = token
-                    logger.info("✓ 成功获取认证Token")
+                    logger.info("✓ Successfully obtained authentication token")
                 else:
-                    logger.error("✗ 获取认证Token失败，将尝试匿名访问...")
+                    logger.error("✗ Failed to obtain authentication token, will attempt anonymous access...")
             else:
-                logger.warning("未找到 'Www-Authenticate' 头，尝试匿名请求...")
+                logger.warning("'Www-Authenticate' header not found, attempting anonymous request...")
 
-        # 步骤3：使用token（或匿名）发送最终请求
+        # Step 3: Send final request using token (or anonymous)
         url = f"{self.registry_url}/v2/{path}"
         cmd = ['curl', '-v', '-i', '--insecure', '-H', f'User-Agent: {self.user_agent}']
 
@@ -173,17 +173,17 @@ class DockerRegistryClient:
 
         cmd.append(url)
         logger.info("""---
-[ 步骤 3/3: 获取镜像Manifest ]
+[ Step 3/3: Fetching image manifest ]
 ---""")
         result = self._run_curl_command(cmd)
 
-        # 解析响应，处理可能存在的多个HTTP头（例如重定向）
+        # Parse response, handle possible multiple HTTP headers (e.g., redirects)
         response_text = result.stdout
         
-        # 找到最后一个HTTP头块
+        # Find last HTTP header block
         last_header_block_start = response_text.rfind('HTTP/')
         
-        # 分离最后的头和body
+        # Separate last header and body
         if last_header_block_start != -1:
             response_part = response_text[last_header_block_start:]
             if '\r\n\r\n' in response_part:
@@ -194,18 +194,18 @@ class DockerRegistryClient:
                 headers_text = response_part
                 body = ''
         else:
-            # 如果找不到 "HTTP/"，则假定整个响应都是body（不太可能发生）
+            # If "HTTP/" is not found, assume the entire response is body (unlikely to occur)
             headers_text = ''
             body = response_text
 
-        # 解析状态码和headers
+        # Parse status code and headers
         lines = headers_text.split('\n')
         status_line = lines[0] if lines else ''
         if ' ' in status_line:
             try:
                 status_code = int(status_line.split()[1])
             except (ValueError, IndexError):
-                status_code = 0 # 无法解析状态码
+                status_code = 0 # Unable to parse status code
         else:
             status_code = 0
 
@@ -215,8 +215,8 @@ class DockerRegistryClient:
                 key, value = line.split(':', 1)
                 response_headers[key.strip().lower()] = value.strip()
 
-        # 如果需要认证且还没有token
-        # 由于我们已经预先获取了token，这里不再需要处理401
+        # If authentication is required and no token yet
+        # Since we have already pre-obtained the token, no need to handle 401 here
 
         if status_code >= 400:
             raise Exception(f"HTTP {status_code}: {body}")
@@ -228,10 +228,10 @@ class DockerRegistryClient:
         }
 
     def get_manifest(self):
-        """获取镜像manifest"""
-        logger.info(f"获取镜像manifest: {self.image_name}:{self.tag}")
+        """Fetch image manifest"""
+        logger.info(f"Fetch image manifest: {self.image_name}:{self.tag}")
 
-        # 支持多种manifest格式
+        # Support multiple manifest formats
         accept_headers = [
             'application/vnd.docker.distribution.manifest.v2+json',
             'application/vnd.docker.distribution.manifest.list.v2+json',
@@ -249,19 +249,19 @@ class DockerRegistryClient:
         manifest = json.loads(response['body'])
         content_type = response['headers'].get('content-type', '')
 
-        logger.info(f"Manifest类型: {content_type}")
+        logger.info(f"Manifest type: {content_type}")
         return manifest, content_type
 
     def download_blob(self, digest, output_path):
-        """下载blob到指定路径"""
-        logger.info(f"下载blob: {digest}")
+        """Download blob to specified path"""
+        logger.info(f"Downloading blob: {digest}")
 
         path = f"{self.image_name}/blobs/{digest}"
 
-        # 直接下载到文件
+        # Download directly to file
         cmd = ['curl', '-v', '-L', '-H', f'User-Agent: {self.user_agent}']
 
-        # 如果有认证token，添加Authorization头
+        # If authentication token exists, add Authorization header
         if self.auth_token:
             cmd.extend(['-H', f'Authorization: Bearer {self.auth_token}'])
 
@@ -270,7 +270,7 @@ class DockerRegistryClient:
 
         self._run_curl_command(cmd)
 
-        logger.debug(f"Blob已保存到: {output_path}")
+        logger.debug(f"Blob saved to: {output_path}")
         return output_path
 
 class DockerImageToRootFS:
@@ -281,17 +281,17 @@ class DockerImageToRootFS:
         self.username = username
         self.password = password
         self.architecture = architecture or self._get_current_architecture()
-        logger.info(f"目标架构: {self.architecture}")
+        logger.info(f"Target architecture: {self.architecture}")
         
     def _get_current_architecture(self):
-        """获取当前系统的架构，并标准化为Docker/OCI格式"""
+        """Get current system architecture and normalize to Docker/OCI format"""
         machine = platform.machine().lower()
         
-        # 架构映射字典
+        # Architecture mapping dictionary
         arch_map = {
             'x86_64': 'amd64',
             'amd64': 'amd64',
-            'aarch64': 'arm64',  # 关键标准化：aarch64 → arm64
+            'aarch64': 'arm64',  # Key normalization: aarch64 → arm64
             'arm64': 'arm64',
             'armv7l': 'arm',
             'armv6l': 'arm',
@@ -302,46 +302,46 @@ class DockerImageToRootFS:
         normalized = arch_map.get(machine)
         if normalized:
             if machine == 'aarch64':
-                logger.info(f"架构标准化: {machine} → {normalized}")
+                logger.info(f"Architecture normalized: {machine} → {normalized}")
             return normalized
         else:
-            logger.warning(f"无法识别的架构: {machine}, 将默认使用 amd64")
+            logger.warning(f"Unrecognized architecture: {machine}, will default to using amd64")
             return 'amd64'
 
     def _get_image_name(self):
-        """从镜像URL中提取镜像名称"""
-        # 从URL中提取镜像名称，去掉域名和标签
+        """Extract image name from image URL"""
+        # Extract image name from URL, remove domain and tag
         parts = self.image_url.split('/')
         image_name = parts[-1].split(':')[0]
         return image_name
     
     def _check_dependencies(self):
-        """检查curl是否已安装"""
-        # 检查curl
+        """Check if curl is installed"""
+        # Check curl
         try:
             subprocess.run(['curl', '--version'],
                          capture_output=True, check=True)
-            logger.info("✓ curl 已安装")
+            logger.info("✓ curl is installed")
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.error("✗ curl 未安装")
-            logger.info("请安装curl命令行工具")
+            logger.error("✗ curl is not installed")
+            logger.info("Please install curl command-line tool")
             return False
 
-        # 检查tar命令
+        # Check tar command
         try:
             subprocess.run(['tar', '--version'],
                          capture_output=True, check=True)
-            logger.info("✓ tar 已安装")
+            logger.info("✓ tar is installed")
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.error("✗ tar 未安装")
-            logger.info("请安装tar命令行工具")
+            logger.error("✗ tar is not installed")
+            logger.info("Please install tar command-line tool")
             return False
 
         return True
     
     def _run_command(self, cmd, cwd=None):
-        """执行命令并处理错误"""
-        logger.info(f"执行命令: {' '.join(cmd)}")
+        """Execute command and handle errors"""
+        logger.info(f"Executing command: {' '.join(cmd)}")
         try:
             result = subprocess.run(
                 cmd, 
@@ -351,176 +351,176 @@ class DockerImageToRootFS:
                 check=True
             )
             if result.stdout:
-                logger.debug(f"输出: {result.stdout}")
+                logger.debug(f"Output: {result.stdout}")
             return result
         except subprocess.CalledProcessError as e:
-            logger.error(f"命令执行失败: {' '.join(cmd)}")
-            logger.error(f"错误码: {e.returncode}")
-            logger.error(f"错误输出: {e.stderr}")
+            logger.error(f"Command execution failed: {' '.join(cmd)}")
+            logger.error(f"Error code: {e.returncode}")
+            logger.error(f"Error output: {e.stderr}")
             raise
     
     def _create_temp_directory(self):
-        """创建临时工作目录"""
+        """Create temporary working directory"""
         self.temp_dir = tempfile.mkdtemp(prefix='docker_rootfs_')
-        logger.info(f"创建临时目录: {self.temp_dir}")
+        logger.info(f"Create temporary directory: {self.temp_dir}")
         return self.temp_dir
     
     def _cleanup_temp_directory(self):
-        """清理临时目录"""
+        """Clean up temporary directory"""
         if self.temp_dir and os.path.exists(self.temp_dir):
             # shutil.rmtree(self.temp_dir)
-            logger.info(f"清理临时目录: {self.temp_dir}")
+            logger.info(f"Clean up temporary directory: {self.temp_dir}")
 
     def _parse_image_url(self):
-        """解析镜像URL，提取registry、镜像名和标签"""
+        """Parse image URL, extract registry, image name and tag"""
         image_url = self.image_url
 
-        # 默认值
+        # Default values
         registry = "registry-1.docker.io"
         image_name = ""
         tag = "latest"
 
-        # 移除docker://前缀（如果存在）
+        # Remove docker:// prefix (if exists)
         if image_url.startswith('docker://'):
             image_url = image_url[9:]
 
-        # 分离标签
-        # 改进的标签分离逻辑
+        # Separate tag
+        # Improved tag separation logic
         if ':' in image_url:
-            # 检查冒号是否在最后一个斜杠之后，或者根本没有斜杠
+            # Check if colon is after the last slash, or there is no slash at all
             last_colon = image_url.rfind(':')
             last_slash = image_url.rfind('/')
             if last_colon > last_slash:
-                # 适用于 a/b:tag, a:123/b:tag, a:tag
+                # Applicable to a/b:tag, a:123/b:tag, a:tag
                 image_url, tag = image_url.rsplit(':', 1)
 
-        # 分离registry和镜像名
+        # Separate registry and image name
         if '/' in image_url:
             parts = image_url.split('/', 1)
-            if '.' in parts[0] or ':' in parts[0]:  # 包含域名
+            if '.' in parts[0] or ':' in parts[0]:  # Contains domain name
                 registry = parts[0]
                 image_name = parts[1]
-            else:  # Docker Hub的简写形式
+            else:  # Docker Hub shorthand
                 registry = "registry-1.docker.io"
                 image_name = image_url
-                # Docker Hub的library镜像需要添加library/前缀
+                # Docker Hub library images need library/ prefix
                 if '/' not in image_name:
                     image_name = f"library/{image_name}"
         else:
-            # 只有镜像名，使用Docker Hub
+            # Only image name, use Docker Hub
             registry = "registry-1.docker.io"
             image_name = f"library/{image_url}"
 
-        # 确保registry有协议前缀
+        # Ensure registry has protocol prefix
         if not registry.startswith(('http://', 'https://')):
             registry = f"https://{registry}"
 
-        logger.info(f"解析镜像URL: registry={registry}, image={image_name}, tag={tag}")
+        logger.info(f"Parsing image URL: registry={registry}, image={image_name}, tag={tag}")
         return registry, image_name, tag
     
     def _download_image_with_python(self):
-        """使用Python下载Docker镜像到OCI格式"""
+        """Download Docker image to OCI format using Python"""
         oci_dir = os.path.join(self.temp_dir, 'oci')
         os.makedirs(oci_dir, exist_ok=True)
 
-        # 解析镜像URL
+        # Parsing image URL
         registry, image_name, tag = self._parse_image_url()
 
-        # 创建registry客户端
+        # Create registry client
         client = DockerRegistryClient(registry, image_name, tag, self.username, self.password)
 
-        # 获取manifest
+        # Fetch manifest
         manifest, content_type = client.get_manifest()
 
-        # 如果是manifest list，根据架构选择一个具体的manifest
+        # If manifest list, select a specific manifest based on architecture
         if 'manifest.list' in content_type or 'image.index' in content_type:
-            logger.info("检测到manifest list，正在寻找匹配的架构...")
+            logger.info("Manifest list detected, searching for matching architecture...")
             
             selected_manifest_descriptor = None
             for manifest_descriptor in manifest.get('manifests', []):
                 platform_info = manifest_descriptor.get('platform', {})
                 manifest_arch = platform_info.get('architecture')
                 
-                # 架构等效性检查：aarch64 和 arm64 视为等效
+                # Architecture equivalence check: aarch64 and arm64 are treated as equivalent
                 arch_match = (manifest_arch == self.architecture or 
                              (self.architecture == 'arm64' and manifest_arch == 'aarch64') or
                              (self.architecture == 'aarch64' and manifest_arch == 'arm64'))
                 
                 if arch_match:
-                    # 优先选择与OS匹配的，如果没有os字段则直接匹配
+                    # Prefer OS match, if no os field then match directly
                     if platform_info.get('os') == 'linux' or 'os' not in platform_info:
                         selected_manifest_descriptor = manifest_descriptor
                         break
             
             if selected_manifest_descriptor:
                 target_digest = selected_manifest_descriptor['digest']
-                logger.info(f"找到匹配架构 '{self.architecture}' 的manifest: {target_digest}")
+                logger.info(f"Found matching architecture '{self.architecture}' manifest: {target_digest}")
                 
-                # 获取子manifest
+                # Fetch sub-manifest
                 logger.info(f"""---
-[ 步骤 3/3: 获取镜像Manifest ]
+[ Step 3/3: Fetching image Manifest ]
 ---""")
                 response = client._make_registry_request(f"{client.image_name}/manifests/{target_digest}")
                 manifest = json.loads(response['body'])
-                content_type = response['headers'].get('content-type', '') # 更新content_type
-                logger.info(f"已选择子manifest，类型: {content_type}")
+                content_type = response['headers'].get('content-type', '') # Update content_type
+                logger.info(f"Selected sub-manifest, type: {content_type}")
             else:
                 available_archs = [m.get('platform', {}).get('architecture') for m in manifest.get('manifests', [])]
-                raise ValueError(f"在manifest list中找不到适用于架构 '{self.architecture}' 的镜像。可用架构: {', '.join(filter(None, available_archs))}")
+                raise ValueError(f"Cannot find image in manifest list for architecture '{self.architecture}' Available architectures: {', '.join(filter(None, available_archs))}")
 
-        # 创建OCI目录结构
+        # Create OCI directory structure
         blobs_dir = os.path.join(oci_dir, 'blobs', 'sha256')
         os.makedirs(blobs_dir, exist_ok=True)
 
-        # 保存manifest
+        # Save manifest
         manifest_digest = self._save_manifest(oci_dir, manifest, content_type)
 
-        # 下载所有层和config
+        # Download all layers and config
         self._download_layers(client, manifest, blobs_dir)
 
-        # 转换config blob为OCI格式
+        # Convert config blob to OCI format
         if 'config' in manifest:
             self._convert_config_blob(client, manifest['config'], blobs_dir)
 
-        # 创建oci-layout文件
+        # Create oci-layout file
         self._create_oci_layout(oci_dir)
 
-        # 创建index.json
+        # Create index.json
         self._create_oci_index(oci_dir, manifest_digest, content_type)
 
-        logger.info(f"镜像已下载到OCI格式: {oci_dir}")
+        logger.info(f"Image downloaded to OCI format: {oci_dir}")
         return oci_dir
 
     def _save_manifest(self, oci_dir, manifest, content_type):
-        """保存manifest并返回其digest，转换为OCI格式"""
-        # 转换Docker格式的manifest为OCI格式
+        """Save manifest and return its digest, convert to OCI format"""
+        # Convert Docker format manifest to OCI format
         oci_manifest = self._convert_manifest_to_oci(manifest, content_type)
 
         manifest_json = json.dumps(oci_manifest, separators=(',', ':'))
         manifest_bytes = manifest_json.encode('utf-8')
 
-        # 计算digest
+        # Calculate digest
         digest = hashlib.sha256(manifest_bytes).hexdigest()
 
-        # 保存到blobs目录
+        # Save to blobs directory
         blobs_dir = os.path.join(oci_dir, 'blobs', 'sha256')
         manifest_path = os.path.join(blobs_dir, digest)
 
         with open(manifest_path, 'wb') as f:
             f.write(manifest_bytes)
 
-        logger.debug(f"OCI Manifest已保存: sha256:{digest}")
+        logger.debug(f"OCI Manifest saved: sha256:{digest}")
         return f"sha256:{digest}"
 
     def _convert_manifest_to_oci(self, manifest, content_type):
-        """将Docker manifest转换为OCI格式"""
+        """Convert Docker manifest to OCI format"""
         if 'docker' not in content_type:
-            # 已经是OCI格式
+            # Already in OCI format
             return manifest
 
         oci_manifest = manifest.copy()
 
-        # 转换媒体类型
+        # Convert media type
         if 'layers' in oci_manifest:
             for layer in oci_manifest['layers']:
                 if layer.get('mediaType') == 'application/vnd.docker.image.rootfs.diff.tar.gzip':
@@ -532,14 +532,14 @@ class DockerImageToRootFS:
             if oci_manifest['config'].get('mediaType') == 'application/vnd.docker.container.image.v1+json':
                 oci_manifest['config']['mediaType'] = 'application/vnd.oci.image.config.v1+json'
 
-        # 设置正确的媒体类型
+        # Set correct media type
         oci_manifest['mediaType'] = 'application/vnd.oci.image.manifest.v1+json'
 
-        logger.debug("已将Docker manifest转换为OCI格式")
+        logger.debug("Converted Docker manifest to OCI format")
         return oci_manifest
 
     def _convert_config_blob(self, client, config_descriptor, blobs_dir):
-        """转换config blob为OCI格式"""
+        """Convert config blob to OCI format"""
         digest = config_descriptor['digest']
 
         if digest.startswith('sha256:'):
@@ -549,33 +549,33 @@ class DockerImageToRootFS:
 
         config_path = os.path.join(blobs_dir, digest_hash)
 
-        # 读取原始config
+        # Read original config
         if not os.path.exists(config_path):
-            logger.error(f"Config blob不存在: {config_path}")
+            logger.error(f"Config blob does not exist: {config_path}")
             return
 
         try:
             with open(config_path, 'r') as f:
                 config_data = json.load(f)
 
-            # 转换Docker config为OCI config
+            # Convert Docker config to OCI config
             oci_config = self._convert_docker_config_to_oci(config_data)
 
-            # 重新保存转换后的config
+            # Re-save converted config
             with open(config_path, 'w') as f:
                 json.dump(oci_config, f, separators=(',', ':'))
 
-            logger.debug(f"已转换config blob为OCI格式: {digest}")
+            logger.debug(f"Converted config blob to OCI format: {digest}")
 
         except Exception as e:
-            logger.warning(f"转换config blob失败: {e}")
+            logger.warning(f"Failed to convert config blob: {e}")
 
     def _convert_docker_config_to_oci(self, docker_config):
-        """将Docker config转换为OCI config"""
+        """Convert Docker config to OCI config"""
         oci_config = docker_config.copy()
 
-        # OCI config的基本结构与Docker config类似，但有一些字段差异
-        # 主要是确保必要的字段存在
+        # OCI config basic structure is similar to Docker config, but has some field differences
+        # Mainly ensure necessary fields exist
 
         if 'architecture' not in oci_config:
             oci_config['architecture'] = 'amd64'
@@ -583,47 +583,47 @@ class DockerImageToRootFS:
         if 'os' not in oci_config:
             oci_config['os'] = 'linux'
 
-        # 确保config字段存在
+        # Ensure config field exists
         if 'config' not in oci_config:
             oci_config['config'] = {}
 
-        # 确保rootfs字段存在
+        # Ensure rootfs field exists
         if 'rootfs' not in oci_config:
             oci_config['rootfs'] = {
                 'type': 'layers',
                 'diff_ids': []
             }
 
-        # 确保history字段存在
+        # Ensure history field exists
         if 'history' not in oci_config:
             oci_config['history'] = []
 
         return oci_config
 
     def _download_layers(self, client, manifest, blobs_dir):
-        """下载镜像的所有层"""
-        # 处理不同类型的manifest
+        """Download all layers of the image"""
+        # Handle different manifest types
         layers = []
 
         if 'layers' in manifest and manifest['layers']:
-            # Docker v2 manifest 或 OCI manifest
+            # Docker v2 manifest or OCI manifest
             layers = manifest['layers'][:]
             if 'config' in manifest:
                 layers.append(manifest['config'])
         elif 'fsLayers' in manifest and manifest['fsLayers']:
-            # Docker v1 manifest (已废弃，但仍需支持)
+            # Docker v1 manifest (deprecated, but still needs support)
             layers = manifest['fsLayers'][:]
             if 'history' in manifest:
-                # v1 manifest的config信息在history中
+                # v1 manifest config information is in history
                 pass
-        # manifest list 的处理已移到调用方
+        # manifest list handling has been moved to caller
         elif not layers:
-            raise ValueError("Manifest中没有找到'layers'或'fsLayers'字段，或者它们为空")
+            raise ValueError("No 'layers' or 'fsLayers' field found in Manifest, or they are empty")
 
         for layer in layers:
             digest = layer.get('digest') or layer.get('blobSum')
             if digest:
-                # 移除sha256:前缀用于文件名
+                # Remove sha256: prefix for filename
                 if digest.startswith('sha256:'):
                     digest_hash = digest[7:]
                 else:
@@ -633,16 +633,16 @@ class DockerImageToRootFS:
                 if not os.path.exists(blob_path):
                     try:
                         client.download_blob(digest, blob_path)
-                        logger.debug(f"已下载层: {digest}")
+                        logger.debug(f"Downloaded layer: {digest}")
                     except Exception as e:
-                        logger.error(f"下载层失败 {digest}: {e}")
+                        logger.error(f"Failed to download layer {digest}: {e}")
                         raise
 
     def _create_oci_index(self, oci_dir, manifest_digest, content_type):
-        """创建OCI index.json文件"""
-        # 确保content_type符合OCI规范
+        """Create OCI index.json file"""
+        # Ensure content_type conforms to OCI specification
         if 'docker' in content_type:
-            # 将Docker格式转换为OCI格式
+            # Convert Docker format to OCI format
             if 'manifest.v2+json' in content_type:
                 oci_content_type = "application/vnd.oci.image.manifest.v1+json"
             elif 'manifest.list.v2+json' in content_type:
@@ -652,7 +652,7 @@ class DockerImageToRootFS:
         else:
             oci_content_type = content_type
 
-        # 获取manifest文件大小
+        # Fetch manifestFile size
         manifest_file_path = os.path.join(oci_dir, 'blobs', 'sha256', manifest_digest[7:])
         manifest_size = os.path.getsize(manifest_file_path) if os.path.exists(manifest_file_path) else 0
 
@@ -674,11 +674,11 @@ class DockerImageToRootFS:
         with open(index_path, 'w') as f:
             json.dump(index, f, indent=2)
 
-        logger.debug(f"OCI index已创建: {index_path}")
-        logger.debug(f"使用content type: {oci_content_type}")
+        logger.debug(f"OCI index created: {index_path}")
+        logger.debug(f"Using content type: {oci_content_type}")
 
     def _create_oci_layout(self, oci_dir):
-        """创建oci-layout文件"""
+        """Create oci-layout file"""
         layout = {
             "imageLayoutVersion": "1.0.0"
         }
@@ -687,17 +687,17 @@ class DockerImageToRootFS:
         with open(layout_path, 'w') as f:
             json.dump(layout, f, indent=2)
 
-        logger.debug(f"OCI layout已创建: {layout_path}")
+        logger.debug(f"OCI layout created: {layout_path}")
 
     def _save_image_config(self, oci_dir, rootfs_dir):
-        """保存镜像配置到根文件系统中，供proot_runner使用"""
+        """Save image configuration to root filesystem for proot_runner use"""
         try:
-            # 读取OCI index
+            # Read OCI index
             index_path = os.path.join(oci_dir, 'index.json')
             with open(index_path, 'r') as f:
                 index = json.load(f)
 
-            # 获取manifest
+            # Fetch manifest
             manifest_descriptor = index['manifests'][0]
             manifest_digest = manifest_descriptor['digest']
             manifest_path = os.path.join(oci_dir, 'blobs', 'sha256', manifest_digest[7:])
@@ -705,7 +705,7 @@ class DockerImageToRootFS:
             with open(manifest_path, 'r') as f:
                 manifest = json.load(f)
 
-            # 获取config
+            # Fetch config
             if 'config' in manifest:
                 config_digest = manifest['config']['digest']
                 config_path = os.path.join(oci_dir, 'blobs', 'sha256', config_digest[7:])
@@ -714,43 +714,43 @@ class DockerImageToRootFS:
                     with open(config_path, 'r') as f:
                         config_data = json.load(f)
 
-                    # 保存配置到根文件系统
+                    # Save configuration to root filesystem
                     config_save_path = os.path.join(rootfs_dir, '.image_config.json')
                     with open(config_save_path, 'w') as f:
                         json.dump(config_data, f, indent=2)
 
-                    logger.info(f"镜像配置已保存到: {config_save_path}")
+                    logger.info(f"Image configuration saved to: {config_save_path}")
 
-                    # 显示一些有用的信息
+                    # Display some useful information
                     config = config_data.get('config', {})
                     if 'Cmd' in config:
-                        logger.info(f"默认命令: {config['Cmd']}")
+                        logger.info(f"Default command: {config['Cmd']}")
                     if 'Entrypoint' in config:
-                        logger.info(f"入口点: {config['Entrypoint']}")
+                        logger.info(f"Entrypoint: {config['Entrypoint']}")
                     if 'WorkingDir' in config:
-                        logger.info(f"工作目录: {config['WorkingDir']}")
+                        logger.info(f"Working directory: {config['WorkingDir']}")
                     if 'Env' in config:
-                        logger.info(f"环境变量: {len(config['Env'])} 个")
+                        logger.info(f"Environment variables: {len(config['Env'])} ")
                 else:
-                    logger.warning("未找到config blob")
+                    logger.warning("Config blob not found")
             else:
-                logger.warning("manifest中没有config信息")
+                logger.warning("No config information in manifest")
 
         except Exception as e:
-            logger.warning(f"保存镜像配置失败: {e}")
-            # 不影响主要流程，继续执行
+            logger.warning(f"Failed to save image configuration: {e}")
+            # Does not affect main flow, continue execution
     
     def _extract_rootfs_with_python(self, oci_dir):
-        """使用Python提取根文件系统"""
+        """Extract root filesystem using Python"""
         rootfs_dir = os.path.join(self.temp_dir, 'rootfs')
         os.makedirs(rootfs_dir, exist_ok=True)
 
-        # 读取OCI index
+        # Read OCI index
         index_path = os.path.join(oci_dir, 'index.json')
         with open(index_path, 'r') as f:
             index = json.load(f)
 
-        # 获取manifest
+        # Fetch manifest
         manifest_descriptor = index['manifests'][0]
         manifest_digest = manifest_descriptor['digest']
         manifest_path = os.path.join(oci_dir, 'blobs', 'sha256', manifest_digest[7:])
@@ -758,80 +758,80 @@ class DockerImageToRootFS:
         with open(manifest_path, 'r') as f:
             manifest = json.load(f)
 
-        logger.info(f"开始提取 {len(manifest.get('layers', []))} 个层")
+        logger.info(f"Starting extraction of {len(manifest.get('layers', []))} layers")
 
-        # 提取所有层
+        # Extract all layers
         layers = manifest.get('layers', [])
         for i, layer in enumerate(layers, 1):
             layer_digest = layer['digest']
             layer_path = os.path.join(oci_dir, 'blobs', 'sha256', layer_digest[7:])
 
-            logger.info(f"提取层 {i}/{len(layers)}: {layer_digest}")
+            logger.info(f"Extracting layer {i}/{len(layers)}: {layer_digest}")
 
-            # 第一层使用严格模式，后续层使用宽松模式
+            # First layer uses strict mode, subsequent layers use relaxed mode
             is_first_layer = (i == 1)
             self._extract_layer(layer_path, rootfs_dir, is_first_layer)
 
-        logger.info(f"根文件系统已提取到: {rootfs_dir}")
+        logger.info(f"Root filesystem extracted to: {rootfs_dir}")
         
-        # 验证关键文件是否存在
+        # Validate if critical files exist
         missing_files = self._validate_critical_files(rootfs_dir)
         if missing_files:
-            error_msg = f"提取后缺少关键文件: {', '.join(missing_files)}"
+            error_msg = f"Missing critical files after extraction: {', '.join(missing_files)}"
             logger.error(error_msg)
             raise RuntimeError(error_msg)
         
         return rootfs_dir
 
     def _extract_layer(self, layer_path, rootfs_dir, is_first_layer=False):
-        """提取单个层到根文件系统目录"""
-        # 在Android环境中优先使用Python tarfile，因为它能更好地处理硬链接
+        """Extract single layer to root filesystem directory"""
+        # In Android environment, prefer Python tarfile as it handles hard links better
         if self._is_android_environment():
             try:
-                logger.debug("Android环境：使用Python tarfile模块提取")
+                logger.debug("Android environment: Using Python tarfile module for extraction")
                 self._extract_layer_with_python(layer_path, rootfs_dir)
                 return
             except Exception as e:
-                logger.warning(f"Python tarfile提取失败: {e}")
-                logger.info("尝试使用tar命令...")
+                logger.warning(f"Python tarfile extraction failed: {e}")
+                logger.info("Trying to use tar command...")
                 try:
                     self._extract_layer_with_tar(layer_path, rootfs_dir, is_first_layer)
                     return
                 except Exception as e2:
-                    logger.error(f"tar命令也失败: {e2}")
+                    logger.error(f"tar command also failed: {e2}")
                     raise
 
-        # 非Android环境：优先使用tar命令
+        # Non-Android environment: Prefer tar command
         try:
             self._extract_layer_with_tar(layer_path, rootfs_dir, is_first_layer)
             return
         except Exception as e:
-            logger.warning(f"tar命令提取失败: {e}")
-            logger.info("尝试使用Python tarfile模块...")
+            logger.warning(f"tar command extraction failed: {e}")
+            logger.info("Trying to use Python tarfile module...")
             self._extract_layer_with_python(layer_path, rootfs_dir)
 
     def _extract_layer_with_python(self, layer_path, rootfs_dir):
-        """使用Python tarfile模块提取层"""
+        """Extract layer using Python tarfile module"""
         import tarfile
         import gzip
 
-        # 检测文件类型
+        # Detect file type
         with open(layer_path, 'rb') as f:
             magic = f.read(2)
 
         try:
             if magic == b'\x1f\x8b':  # gzip magic number
-                # 这是一个gzip压缩的tar文件
+                # This is a gzip-compressed tar file
                 with gzip.open(layer_path, 'rb') as gz_file:
                     with tarfile.open(fileobj=gz_file, mode='r|*') as tar:
                         self._safe_extract_tar(tar, rootfs_dir)
             else:
-                # 尝试作为普通tar文件
+                # Try as regular tar file
                 with tarfile.open(layer_path, 'r') as tar:
                     self._safe_extract_tar(tar, rootfs_dir)
         except Exception as e:
-            # 如果流式读取失败，尝试非流式
-            logger.debug(f"流式提取失败，尝试非流式: {e}")
+            # If streaming read fails, try non-streaming
+            logger.debug(f"Streaming extraction failed, trying non-streaming: {e}")
             if magic == b'\x1f\x8b':
                 with tarfile.open(layer_path, 'r:gz') as tar:
                     self._safe_extract_tar(tar, rootfs_dir)
@@ -840,37 +840,37 @@ class DockerImageToRootFS:
                     self._safe_extract_tar(tar, rootfs_dir)
 
     def _safe_extract_tar(self, tar, rootfs_dir):
-        """安全地提取tar文件，处理特殊情况（增强Android支持）"""
+        """Safely extract tar file, handle special cases (enhanced Android support)"""
         whiteout_count = 0
         
-        # 设置提取过滤器以避免警告
+        # Set extraction filter to avoid warnings
         def extract_filter(member, path):
             nonlocal whiteout_count
             
-            # 跳过whiteout文件
+            # Skipping whiteout file
             if member.name.startswith('.wh.') or '/.wh.' in member.name:
-                logger.debug(f"跳过whiteout文件: {member.name}")
+                logger.debug(f"Skipping whiteout file: {member.name}")
                 whiteout_count += 1
                 return None
 
-            # 跳过设备文件和特殊文件
+            # Skip device files and special files
             if member.isdev() or member.isfifo():
-                logger.debug(f"跳过设备/FIFO文件: {member.name}")
+                logger.debug(f"Skipping device/FIFO file: {member.name}")
                 return None
 
-            # 处理路径安全性
+            # Handle path security
             if member.name.startswith('/') or '..' in member.name:
-                logger.warning(f"跳过不安全的路径: {member.name}")
+                logger.warning(f"Skipping unsafe path: {member.name}")
                 return None
 
-            # 在Android环境中，重置权限以避免问题，并保留可执行位
+            # In Android environment, reset permissions to avoid issues while preserving executable bit
             if self._is_android_environment():
                 if member.isfile():
                     has_exec = bool(member.mode & 0o111)
                     member.mode = 0o755 if has_exec else 0o644
                 elif member.isdir():
                     member.mode = 0o755
-                # 重置所有者信息
+                # Reset owner information
                 member.uid = 0
                 member.gid = 0
                 member.uname = 'root'
@@ -878,27 +878,27 @@ class DockerImageToRootFS:
 
             return member
 
-        # 手动处理每个成员，更好地控制提取过程
+        # Manually handle each member for better control of extraction process
         for member in tar:
             try:
-                # 应用过滤器
+                # Apply filter
                 filtered_member = extract_filter(member, rootfs_dir)
                 if not filtered_member:
                     continue
 
-                # 特殊处理硬链接
+                # Special handling for hard links
                 if member.islnk():
-                    # 将硬链接转换为普通文件或符号链接
+                    # Convert hard links to regular files or symbolic links
                     self._handle_hardlink(tar, member, rootfs_dir)
                     continue
 
-                # 正常提取
+                # Normal extraction
                 tar.extract(filtered_member, rootfs_dir)
 
             except (OSError, PermissionError, tarfile.ExtractError) as e:
-                logger.debug(f"提取文件失败 {member.name}: {e}")
+                logger.debug(f"Failed to extract file {member.name}: {e}")
 
-                # 尝试手动创建文件
+                # Trying to manually create file
                 if member.isfile():
                     self._manual_extract_file(tar, member, rootfs_dir)
                 elif member.isdir():
@@ -908,32 +908,32 @@ class DockerImageToRootFS:
                 elif member.issym():
                     self._manual_create_symlink(member, rootfs_dir)
         
-        # 如果跳过了whiteout文件，记录警告
+        # If whiteout files were skipped, log warning
         if whiteout_count > 0:
             if self._is_android_environment():
-                logger.warning(f"在Android环境中跳过了 {whiteout_count} 个whiteout文件。层删除语义可能不完全保留。")
+                logger.warning(f"Skipped in Android environment {whiteout_count} whiteout files. Layer deletion semantics may not be fully preserved.")
             else:
-                logger.info(f"跳过了 {whiteout_count} 个whiteout文件")
+                logger.info(f"Skipped {whiteout_count} whiteout files")
 
     def _handle_hardlink(self, tar, member, rootfs_dir):
-        """处理硬链接，转换为普通文件"""
+        """Handle hard links, convert to regular files"""
         try:
             target_path = os.path.join(rootfs_dir, member.name)
             link_target_path = os.path.join(rootfs_dir, member.linkname)
 
-            # 如果链接目标存在，复制文件内容
+            # If link target exists, copy file content
             if os.path.exists(link_target_path):
                 os.makedirs(os.path.dirname(target_path), exist_ok=True)
                 shutil.copy2(link_target_path, target_path)
-                logger.debug(f"硬链接转换为文件副本: {member.name} -> {member.linkname}")
+                logger.debug(f"Hard link converted to file copy: {member.name} -> {member.linkname}")
             else:
-                # 如果目标不存在，尝试从tar中提取原始文件
-                logger.debug(f"硬链接目标不存在，跳过: {member.name} -> {member.linkname}")
+                # If target does not exist, try to extract original file from tar
+                logger.debug(f"Hard link target does not exist, skipping: {member.name} -> {member.linkname}")
         except Exception as e:
-            logger.debug(f"处理硬链接失败 {member.name}: {e}")
+            logger.debug(f"Failed to handle hard link {member.name}: {e}")
 
     def _manual_extract_file(self, tar, member, rootfs_dir):
-        """手动提取文件"""
+        """Manually extract file"""
         try:
             target_path = os.path.join(rootfs_dir, member.name)
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -943,17 +943,17 @@ class DockerImageToRootFS:
                 if source_file:
                     shutil.copyfileobj(source_file, target_file)
 
-            # 设置基本权限
+            # Set basic permissions
             try:
                 os.chmod(target_path, 0o644 if not (member.mode & 0o111) else 0o755)
             except OSError:
                 pass
 
         except Exception as e:
-            logger.debug(f"手动提取文件失败 {member.name}: {e}")
+            logger.debug(f"Manually failed to extract file {member.name}: {e}")
 
     def _manual_create_dir(self, member, rootfs_dir):
-        """手动创建目录"""
+        """Manually create directory"""
         try:
             target_path = os.path.join(rootfs_dir, member.name)
             os.makedirs(target_path, exist_ok=True)
@@ -962,24 +962,24 @@ class DockerImageToRootFS:
             except OSError:
                 pass
         except Exception as e:
-            logger.debug(f"手动创建目录失败 {member.name}: {e}")
+            logger.debug(f"Failed to manually create directory {member.name}: {e}")
 
     def _manual_create_symlink(self, member, rootfs_dir):
-        """手动创建符号链接"""
+        """Manually create symbolic link"""
         try:
             target_path = os.path.join(rootfs_dir, member.name)
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
 
-            # 如果目标已存在，先删除
+            # If target already exists, delete first
             if os.path.exists(target_path) or os.path.islink(target_path):
                 os.remove(target_path)
 
             os.symlink(member.linkname, target_path)
         except Exception as e:
-            logger.debug(f"手动创建符号链接失败 {member.name}: {e}")
+            logger.debug(f"Failed to manually create symbolic link {member.name}: {e}")
 
     def _is_android_environment(self):
-        """检测是否在Android环境中运行（增强版）"""
+        """Detect if running in Android environment (enhanced version)"""
         android_indicators = [
             '/data/data/com.termux' in os.getcwd(),
             os.path.exists('/system/build.prop'),
@@ -992,25 +992,25 @@ class DockerImageToRootFS:
         is_android = any(android_indicators)
 
         if is_android:
-            logger.debug("检测到Android/Termux环境")
+            logger.debug("Detected Android/Termux environment")
 
         return is_android
 
     def _validate_critical_files(self, rootfs_dir):
-        """验证关键文件是否存在（宽松模式，仅警告）"""
+        """Validate if critical files exist (relaxed mode, warnings only)"""
         missing_files = []
         
-        # 在Android环境中，使用更宽松的验证
-        # 因为有些镜像可能使用非标准路径
+        # In Android environment, use more relaxed validation
+        # Because some images may use non-standard paths
         if self._is_android_environment():
-            logger.debug("Android环境：使用宽松的文件验证模式")
+            logger.debug("Android environment: Using relaxed file validation mode")
             
-            # 只检查rootfs是否为空
+            # Only check if rootfs is empty
             if not os.listdir(rootfs_dir):
                 missing_files.append('rootfs is empty')
                 return missing_files
             
-            # 检查是否至少有一些基本目录
+            # Check if at least some basic directories exist
             basic_dirs = ['bin', 'usr', 'lib', 'etc', 'var']
             has_basic_structure = any(
                 os.path.exists(os.path.join(rootfs_dir, d)) 
@@ -1018,14 +1018,14 @@ class DockerImageToRootFS:
             )
             
             if not has_basic_structure:
-                logger.warning(f"警告：rootfs缺少基本目录结构 ({', '.join(basic_dirs)})")
-                logger.warning("这可能是正常的，某些镜像使用非标准布局")
+                logger.warning(f"Warning: rootfs missing basic directory structure ({', '.join(basic_dirs)})")
+                logger.warning("This may be normal, some images use non-standard layouts")
             
-            # 在Android环境中不强制要求特定文件
+            # In Android environment, specific files are not mandatory
             return []
         
-        # 非Android环境：使用标准验证
-        # 检查shell
+        # Non-Android environment: Use standard validation
+        # Check shell
         shells = ['/bin/sh', '/bin/bash', '/bin/ash']
         has_shell = False
         for shell in shells:
@@ -1037,7 +1037,7 @@ class DockerImageToRootFS:
         if not has_shell:
             missing_files.append('shell (checked: /bin/sh, /bin/bash, /bin/ash)')
         
-        # 检查lib目录
+        # Check lib directory
         lib_dirs = ['/lib', '/lib64', '/usr/lib']
         has_lib = False
         for lib_dir in lib_dirs:
@@ -1049,7 +1049,7 @@ class DockerImageToRootFS:
         if not has_lib:
             missing_files.append('library directory (checked: /lib, /lib64, /usr/lib)')
         
-        # 检查/usr/bin
+        # Check /usr/bin
         usr_bin_path = os.path.join(rootfs_dir, 'usr/bin')
         if not os.path.exists(usr_bin_path) or not os.path.isdir(usr_bin_path) or not os.listdir(usr_bin_path):
             missing_files.append('/usr/bin directory')
@@ -1057,36 +1057,36 @@ class DockerImageToRootFS:
         return missing_files
 
     def _extract_layer_with_tar(self, layer_path, rootfs_dir, is_first_layer=False):
-        """使用tar命令提取层（增强Android支持）"""
-        # 检测文件类型并使用适当的tar选项
+        """Extract layer using tar command (enhanced Android support)"""
+        # Detect file type and use appropriate tar options
         with open(layer_path, 'rb') as f:
             magic = f.read(2)
 
-        # 构建基础命令
+        # Build base command
         if magic == b'\x1f\x8b':  # gzip
             base_cmd = ['tar', '-xzf', layer_path, '-C', rootfs_dir]
         else:
             base_cmd = ['tar', '-xf', layer_path, '-C', rootfs_dir]
 
-        # 根据是否为第一层和环境选择不同的选项
+        # Select different options based on whether it's first layer and environment
         if self._is_android_environment():
-            # Android环境使用增强的宽松选项
+            # Android environment uses enhanced relaxed options
             tar_options = [
-                '--no-same-owner',           # 忽略所有者信息
-                '--no-same-permissions',     # 忽略权限信息
-                '--warning=no-unknown-keyword',  # 忽略未知关键字警告
-                '--exclude=.wh.*',           # 跳过whiteout文件
-                '--exclude=.wh.wh.*',        # 跳过whiteout opaque标记
+                '--no-same-owner',           # Ignore owner information
+                '--no-same-permissions',     # Ignore permission information
+                '--warning=no-unknown-keyword',  # Ignore unknown keyword warnings
+                '--exclude=.wh.*',           # Skipping whiteout file
+                '--exclude=.wh.wh.*',        # Skip whiteout opaque markers
             ]
             
             if not is_first_layer:
-                # 后续层允许覆盖，并跳过已存在的文件（避免硬链接问题）
+                # Subsequent layers allow overwriting and skip existing files (avoid hard link issues)
                 tar_options.extend(['--overwrite', '--skip-old-files'])
             else:
-                # 第一层也跳过已存在的文件
+                # First layer also skips existing files
                 tar_options.append('--skip-old-files')
         else:
-            # 标准Linux环境选项
+            # Standard Linux environment options
             tar_options = [
                 '--no-same-owner',
                 '--no-same-permissions'
@@ -1098,57 +1098,57 @@ class DockerImageToRootFS:
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             if result.returncode == 0:
-                logger.debug("tar提取成功")
+                logger.debug("tar extraction successful")
             elif result.returncode == 2:
-                # tar退出码2通常表示有警告（如硬链接失败），但文件已提取
-                logger.info("tar提取完成（有警告，但文件已提取）")
+                # tar exit code 2 usually indicates warnings (like hard link failures), but files are extracted
+                logger.info("tar extraction completed (with warnings, but files extracted)")
                 if self._is_android_environment():
-                    logger.debug("Android环境：忽略硬链接相关警告")
+                    logger.debug("Android environment: Ignoring hard link related warnings")
             else:
-                # 其他错误码，尝试fallback
-                logger.warning(f"tar命令失败（退出码{result.returncode}），尝试宽松模式")
+                # Other error codes, try fallback
+                logger.warning(f"tar command failed (exit code{result.returncode}), trying relaxed mode")
                 self._extract_with_fallback(base_cmd, rootfs_dir)
         except Exception as e:
-            logger.warning(f"tar命令异常: {e}，尝试宽松模式")
+            logger.warning(f"tar command exception: {e}, trying relaxed mode")
             self._extract_with_fallback(base_cmd, rootfs_dir)
 
     def _extract_with_fallback(self, base_cmd, rootfs_dir):
-        """使用最宽松的选项重试tar提取"""
+        """Retry tar extraction with most relaxed options"""
         fallback_cmd = base_cmd + [
             '--no-same-owner',
             '--no-same-permissions',
             '--warning=no-unknown-keyword',
             '--exclude=.wh.*',
             '--exclude=.wh.wh.*',
-            '--skip-old-files',          # 跳过已存在的文件（避免硬链接冲突）
-            '--ignore-failed-read',      # 忽略读取失败
+            '--skip-old-files',          # Skip existing files (avoid hard link conflicts)
+            '--ignore-failed-read',      # Ignore read failures
         ]
 
         result = subprocess.run(fallback_cmd, capture_output=True, text=True)
 
         if result.returncode == 0:
-            logger.info("使用宽松模式提取成功")
+            logger.info("Extraction successful with relaxed mode")
         elif result.returncode == 2:
-            # tar退出码2表示有警告但部分成功（通常是硬链接问题）
-            logger.info("tar提取完成（有警告，但大部分文件已提取）")
+            # tar exit code 2 indicates warnings but partial success (usually hard link issues)
+            logger.info("tar extraction completed (with warnings, but most files extracted)")
             if self._is_android_environment():
-                logger.info("Android环境：硬链接错误已忽略，容器应该可以正常运行")
-            logger.debug(f"tar警告: {result.stderr[:500]}...")
+                logger.info("Android environment: Hard link errors ignored, container should run normally")
+            logger.debug(f"tar warnings: {result.stderr[:500]}...")
         else:
-            error_msg = f"tar提取失败，退出码: {result.returncode}"
+            error_msg = f"tar extraction failed, exit code: {result.returncode}"
             if self._is_android_environment():
-                error_msg += "\n提示：在Android环境中，某些权限操作可能失败。尝试使用 --verbose 查看详细信息。"
+                error_msg += "\nTip: In Android environment, some permission operations may fail. Try using --verbose to view details."
             logger.error(error_msg)
-            logger.error(f"错误详情: {result.stderr[:1000]}")
+            logger.error(f"Error details: {result.stderr[:1000]}")
             raise subprocess.CalledProcessError(result.returncode, fallback_cmd, result.stderr)
 
 
     
     def _create_tar_archive(self, rootfs_dir):
-        """创建tar归档文件"""
+        """Create tar archive file"""
         output_path = os.path.abspath(self.output_path)
         
-        # 使用tar命令创建归档，保持权限和所有者信息
+        # Use tar command to create archive, preserve permissions and owner information
         cmd = [
             'tar', 
             '-czf', output_path,
@@ -1157,14 +1157,14 @@ class DockerImageToRootFS:
         ]
         
         self._run_command(cmd)
-        logger.info(f"根文件系统tar包已创建: {output_path}")
+        logger.info(f"Root filesystem tar package created: {output_path}")
         return output_path
     
     def _optimize_for_proot(self, rootfs_dir):
-        """为proot优化根文件系统"""
-        logger.info("为proot优化根文件系统...")
+        """Optimize root filesystem for proot"""
+        logger.info("Optimize root filesystem for proot...")
 
-        # 创建必要的目录
+        # Create necessary directories
         essential_dirs = [
             'proc', 'sys', 'dev', 'tmp', 'run',
             'var/tmp', 'var/log', 'var/run'
@@ -1174,20 +1174,20 @@ class DockerImageToRootFS:
             full_path = os.path.join(rootfs_dir, dir_path)
             try:
                 os.makedirs(full_path, exist_ok=True)
-                logger.debug(f"确保目录存在: {dir_path}")
+                logger.debug(f"Ensure directory exists: {dir_path}")
             except OSError as e:
-                # 如果目录已存在但是文件，尝试删除后重建
+                # If directory already exists but is a file, try to delete and rebuild
                 if os.path.exists(full_path) and not os.path.isdir(full_path):
                     try:
                         os.remove(full_path)
                         os.makedirs(full_path, exist_ok=True)
-                        logger.debug(f"替换文件为目录: {dir_path}")
+                        logger.debug(f"Replace file with directory: {dir_path}")
                     except OSError as e2:
-                        logger.warning(f"无法创建目录 {dir_path}: {e2}")
+                        logger.warning(f"Unable to create directory {dir_path}: {e2}")
                 else:
-                    logger.debug(f"目录已存在: {dir_path}")
+                    logger.debug(f"Directory already exists: {dir_path}")
         
-        # 创建基本的设备文件（如果不存在）
+        # Create basic device files (if not exist)
         dev_dir = os.path.join(rootfs_dir, 'dev')
         if os.path.exists(dev_dir):
             essential_devs = [
@@ -1201,118 +1201,118 @@ class DockerImageToRootFS:
                 dev_path = os.path.join(dev_dir, dev_name)
                 if not os.path.exists(dev_path):
                     try:
-                        # 注意：在某些环境中可能没有权限创建设备文件
-                        # 这里只是尝试，失败了也不影响主要功能
+                        # Note: In some environments may not have permission to create device files
+                        # Just trying here, failure does not affect main functionality
                         if dev_type == 'c' and hasattr(os, 'mknod'):
                             os.mknod(dev_path, 0o666 | os.stat.S_IFCHR,
                                     os.makedev(major, minor))
-                            logger.debug(f"创建字符设备: {dev_name}")
+                            logger.debug(f"Creating character device: {dev_name}")
                         else:
-                            # 如果无法创建设备文件，创建普通文件作为占位符
+                            # If unable to create device file, create regular file as placeholder
                             with open(dev_path, 'w') as f:
                                 f.write('')
-                            logger.debug(f"创建设备文件占位符: {dev_name}")
+                            logger.debug(f"Creating device file placeholder: {dev_name}")
                     except (OSError, AttributeError) as e:
-                        logger.debug(f"无法创建设备文件 {dev_name}: {e} (这通常是正常的)")
+                        logger.debug(f"Unable to create device file {dev_name}: {e} (this is usually normal)")
     
     def create_rootfs_tar(self):
-        """主要的处理流程"""
+        """Main processing flow"""
         try:
-            # 检查依赖
+            # Check dependencies
             if not self._check_dependencies():
                 return False
             
-            # 创建临时目录
+            # Create temporary directory
             self._create_temp_directory()
             
-            # 使用Python下载镜像
-            logger.info("步骤 1/4: 使用Python下载Docker镜像...")
+            # Download image using Python
+            logger.info("Step 1/4: Downloading Docker image using Python...")
             oci_dir = self._download_image_with_python()
             
-            # 使用Python提取根文件系统
-            logger.info("步骤 2/4: 使用Python提取根文件系统...")
+            # Extract root filesystem using Python
+            logger.info("Step 2/4: Extracting root filesystem using Python...")
             rootfs_dir = self._extract_rootfs_with_python(oci_dir)
             
-                # 保存镜像配置
-            logger.info("步骤 3/5: 保存镜像配置...")
+                # Save image configuration
+            logger.info("Step 3/5: Saving image configuration...")
             self._save_image_config(oci_dir, rootfs_dir)
 
-            # 为proot优化
-            logger.info("步骤 4/5: 为proot优化根文件系统...")
+            # Optimize for proot
+            logger.info("Step 4/5: Optimizing root filesystem for proot...")
             self._optimize_for_proot(rootfs_dir)
 
-            # 创建tar归档
-            logger.info("步骤 5/5: 创建tar归档...")
+            # Create tar archive
+            logger.info("Step 5/5: Creating tar archive...")
             output_file = self._create_tar_archive(rootfs_dir)
             
-            logger.info(f"✓ 成功创建根文件系统tar包: {output_file}")
-            logger.info(f"文件大小: {os.path.getsize(output_file) / 1024 / 1024:.2f} MB")
+            logger.info(f"✓ Successfully created root filesystem tar package: {output_file}")
+            logger.info(f"File size: {os.path.getsize(output_file) / 1024 / 1024:.2f} MB")
             
-            # 提供使用说明
+            # Provide usage instructions
             self._print_usage_instructions(output_file)
             
             return True
             
         except Exception as e:
-            logger.error(f"处理失败: {str(e)}")
+            logger.error(f"Processing failed: {str(e)}")
             return False
         finally:
-            # 清理临时目录
+            # Clean up temporary directory
             self._cleanup_temp_directory()
     
     def _print_usage_instructions(self, tar_file):
-        """打印使用说明"""
+        """Print usage instructions"""
         logger.info("\n" + "="*50)
-        logger.info("在Android Termux中使用proot的说明:")
+        logger.info("Instructions for using proot in Android Termux:")
         logger.info("="*50)
-        logger.info("1. 将tar文件传输到Android设备")
-        logger.info("2. 在Termux中安装proot:")
+        logger.info("1. Transfer tar file to Android device")
+        logger.info("2. Install proot in Termux:")
         logger.info("   pkg install proot")
-        logger.info("3. 解压根文件系统:")
+        logger.info("3. Extract root filesystem:")
         logger.info(f"   mkdir rootfs && tar -xzf {os.path.basename(tar_file)} -C rootfs")
-        logger.info("4. 使用proot进入容器:")
+        logger.info("4. Enter container using proot:")
         logger.info("   proot -r rootfs -b /dev -b /proc -b /sys /bin/sh")
-        logger.info("或者使用更完整的绑定:")
+        logger.info("Or use more complete binding:")
         logger.info("   proot -r rootfs -b /dev -b /proc -b /sys -b /sdcard -w / /bin/sh")
         logger.info("="*50)
-        logger.info("注意: 此脚本仅需要curl和tar命令行工具，无需skopeo、umoci和requests库")
-        logger.info("使用Python标准库实现镜像解包，适合在各种环境中运行")
+        logger.info("Note: This script only requires curl and tar command-line tools, no need for skopeo, umoci and requests library")
+        logger.info("Uses Python standard library for image unpacking, suitable for running in various environments")
 
 def main():
     parser = argparse.ArgumentParser(
-        description='使用curl和Python制作Docker镜像的根文件系统tar包'
+        description='Create Docker image root filesystem tar package using curl and Python'
     )
     parser.add_argument(
         'image_url',
         nargs='?',
         default='swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/jeessy/ddns-go:v6.9.1-linuxarm64',
-        help='Docker镜像URL (默认: ddns-go镜像)'
+        help='Docker image URL (default: ddns-go image)'
     )
     parser.add_argument(
         '-o', '--output',
-        help='输出tar文件路径 (默认: 基于镜像名称自动生成)'
+        help='Output tar file path (default: auto-generated based on image name)'
     )
     parser.add_argument(
         '-v', '--verbose',
         action='store_true',
-        help='显示详细日志'
+        help='Show detailed logs'
     )
     parser.add_argument(
         '--username',
-        help='Docker Registry用户名'
+        help='Docker Registry username'
     )
     parser.add_argument(
         '--password',
-        help='Docker Registry密码或token'
+        help='Docker Registry password or token'
     )
     parser.add_argument(
         '--proxy',
-        help='指定用于curl的网络代理 (例如: "http://user:pass@host:port" 或 "socks5://host:port")'
+        help='Specify network proxy for curl (e.g., "http://user:pass@host:port" or "socks5://host:port")'
     )
     
     parser.add_argument(
         '--arch',
-        help='指定目标架构 (例如: amd64, arm64)。默认为自动检测。'
+        help='Specify target architecture (e.g., amd64, arm64). Defaults to auto-detect.'
     )
     
     args = parser.parse_args()
@@ -1320,17 +1320,17 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    logger.info(f"开始处理Docker镜像: {args.image_url}")
+    logger.info(f"Starting to process Docker image: {args.image_url}")
     
-    # 将代理参数传递给处理器
+    # Pass proxy parameter to processor
     processor = DockerImageToRootFS(args.image_url, args.output, args.username, args.password, args.arch)
-    # 在客户端中也需要设置代理
+    # Proxy also needs to be set in client
     if args.proxy:
-        # 这是个简化处理，理想情况下应该在DockerRegistryClient中处理
-        # 但为了快速解决问题，我们通过环境变量设置
+        # This is a simplified handling, ideally should be handled in DockerRegistryClient
+        # But for quick problem resolution, we set via environment variables
         os.environ['https_proxy'] = args.proxy
         os.environ['http_proxy'] = args.proxy
-        logger.info(f"已设置网络代理: {args.proxy}")
+        logger.info(f"Network proxy set: {args.proxy}")
     success = processor.create_rootfs_tar()
     
     sys.exit(0 if success else 1)
