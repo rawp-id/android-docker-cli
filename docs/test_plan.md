@@ -1,117 +1,117 @@
-# Android Docker CLI 兼容性测试计划
+# Android Docker CLI Compatibility Test Plan
 
-## 1. 测试目标
+## 1. Test Objectives
 
-验证 `android-docker-cli` 工具是否能够与非 Docker Hub 的镜像仓库（具体为 `swr.cn-north-4.myhuaweicloud.com`）完全兼容，包括镜像的拉取、运行和管理。
+Verify that the `android-docker-cli` tool is fully compatible with non-Docker Hub image registries (specifically `swr.cn-north-4.myhuaweicloud.com`), including image pulling, running, and management.
 
-## 2. 测试环境
+## 2. Test Environment
 
-*   **工具**: `android-docker-cli` (当前项目中的版本)
-*   **操作系统**: 任何支持 `proot` 和 `curl` 的 Linux 环境，优先考虑 Termux on Android。
-*   **依赖**: `python`, `proot`, `curl`, `tar`
-*   **测试镜像**: `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
+*   **Tool**: `android-docker-cli` (current version in project)
+*   **Operating System**: Any Linux environment that supports `proot` and `curl`, preferably Termux on Android.
+*   **Dependencies**: `python`, `proot`, `curl`, `tar`
+*   **Test Image**: `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
 
-## 3. 测试用例
+## 3. Test Cases
 
-### 3.1. 用例 1: 镜像拉取 (`docker pull`)
+### 3.1. Case 1: Image Pull (`docker pull`)
 
-*   **步骤**:
-    1.  执行命令: `python docker_cli.py pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
-    2.  (可选) 为了验证强制刷新功能，再次执行: `python docker_cli.py pull --force swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
-*   **预期结果**:
-    1.  命令成功执行，没有错误输出。
-    2.  日志显示 "✓ 镜像拉取成功"。
-    3.  在 `~/.docker_proot_cache/` 目录下，可以看到一个代表该镜像的 `.tar.gz` 文件和一个 `.info` 文件。
-    4.  执行 `docker images` 命令，可以看到缓存的镜像信息。
+*   **Steps**:
+    1.  Execute command: `python docker_cli.py pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
+    2.  (Optional) To verify forced refresh functionality, execute again: `python docker_cli.py pull --force swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
+*   **Expected Results**:
+    1.  Command executes successfully without errors.
+    2.  Log shows "✓ Image pull successful".
+    3.  In the `~/.docker_proot_cache/` directory, you can see a `.tar.gz` file and a `.info` file representing this image.
+    4.  Execute `docker images` command to see cached image information.
 
-### 3.2. 用例 2: 容器运行 (前台模式, `docker run`)
+### 3.2. Case 2: Container Run (Foreground Mode, `docker run`)
 
-*   **步骤**:
-    1.  执行命令: `python docker_cli.py run swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest echo "Hello from Huawei Cloud image"`
-*   **预期结果**:
-    1.  命令成功执行。
-    2.  终端输出 "Hello from Huawei Cloud image"。
-    3.  日志显示 "容器 ... 运行完成"。
-    4.  由于是前台非持久化运行，执行后 `docker ps -a` 不应看到此容器的记录。
+*   **Steps**:
+    1.  Execute command: `python docker_cli.py run swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest echo "Hello from Huawei Cloud image"`
+*   **Expected Results**:
+    1.  Command executes successfully.
+    2.  Terminal outputs "Hello from Huawei Cloud image".
+    3.  Log shows "Container ... completed".
+    4.  Since this is foreground non-persistent run, executing `docker ps -a` should not show a record of this container.
 
-### 3.3. 用例 3: 容器运行 (交互式模式, `docker run -it`)
+### 3.3. Case 3: Container Run (Interactive Mode, `docker run -it`)
 
-*   **步骤**:
-    1.  执行命令: `python docker_cli.py run -it swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest /bin/sh`
-*   **预期结果**:
-    1.  成功进入容器的 shell 环境，提示符变为 `#` 或 `$`。
-    2.  在 shell 中可以执行基本命令，如 `ls -l`, `pwd`, `cat /etc/os-release`。
-    3.  输入 `exit` 后，可以正常退出容器。
+*   **Steps**:
+    1.  Execute command: `python docker_cli.py run -it swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest /bin/sh`
+*   **Expected Results**:
+    1.  Successfully enters the container's shell environment, with prompt changing to `#` or `$`.
+    2.  In the shell, you can execute basic commands like `ls -l`, `pwd`, `cat /etc/os-release`.
+    3.  After typing `exit`, you can exit the container normally.
 
-### 3.4. 用例 4: 容器运行 (后台模式, `docker run -d`)
+### 3.4. Case 4: Container Run (Background Mode, `docker run -d`)
 
-*   **步骤**:
-    1.  执行命令: `python docker_cli.py run -d swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest sleep 60`
-*   **预期结果**:
-    1.  命令立即返回，并输出一个容器 ID。
-    2.  日志显示 "容器 ... 已在后台启动"。
-    3.  执行 `python docker_cli.py ps`，可以看到一个状态为 `running` 的新容器。
-    4.  等待约 1 分钟后，再次执行 `python docker_cli.py ps -a`，该容器的状态应变为 `exited`。
+*   **Steps**:
+    1.  Execute command: `python docker_cli.py run -d swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest sleep 60`
+*   **Expected Results**:
+    1.  Command returns immediately and outputs a container ID.
+    2.  Log shows "Container ... started in background".
+    3.  Execute `python docker_cli.py ps`, you can see a new container with status `running`.
+    4.  After waiting about 1 minute, execute `python docker_cli.py ps -a` again, the container status should change to `exited`.
 
-### 3.5. 用例 5: 容器生命周期管理 (`ps`, `stop`, `start`, `rm`)
+### 3.5. Case 5: Container Lifecycle Management (`ps`, `stop`, `start`, `rm`)
 
-*   **步骤**:
-    1.  基于用例 3.4 启动一个后台容器: `python docker_cli.py run -d --name test-huawei swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest sleep 120`
-    2.  查看容器状态: `python docker_cli.py ps`
-    3.  停止容器: `python docker_cli.py stop test-huawei`
-    4.  再次查看状态: `python docker_cli.py ps -a`
-    5.  启动容器: `python docker_cli.py start test-huawei`
-    6.  再次查看状态: `python docker_cli.py ps`
-    7.  删除容器: `python docker_cli.py rm test-huawei`
-    8.  最后查看状态: `python docker_cli.py ps -a`
-*   **预期结果**:
-    1.  `ps` 命令能正确显示容器的运行状态 (`running`, `exited`)。
-    2.  `stop` 命令能成功停止容器，状态变为 `exited`。
-    3.  `start` 命令能成功启动已停止的容器，状态变回 `running`。
-    4.  `rm` 命令能成功删除容器，之后 `ps -a` 不再显示该容器。
+*   **Steps**:
+    1.  Based on Case 3.4, start a background container: `python docker_cli.py run -d --name test-huawei swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest sleep 120`
+    2.  View container status: `python docker_cli.py ps`
+    3.  Stop container: `python docker_cli.py stop test-huawei`
+    4.  View status again: `python docker_cli.py ps -a`
+    5.  Start container: `python docker_cli.py start test-huawei`
+    6.  View status again: `python docker_cli.py ps`
+    7.  Remove container: `python docker_cli.py rm test-huawei`
+    8.  Final status check: `python docker_cli.py ps -a`
+*   **Expected Results**:
+    1.  `ps` command correctly displays container running status (`running`, `exited`).
+    2.  `stop` command successfully stops container, status changes to `exited`.
+    3.  `start` command successfully starts stopped container, status changes back to `running`.
+    4.  `rm` command successfully removes container, afterwards `ps -a` no longer shows this container.
 
-### 3.6. 用例 6: 查看容器日志 (`docker logs`)
+### 3.6. Case 6: View Container Logs (`docker logs`)
 
-*   **步骤**:
-    1.  启动一个后台容器，让它产生一些输出: `python docker_cli.py run -d --name log-test swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest sh -c 'echo "line 1"; sleep 1; echo "line 2"; sleep 1; echo "line 3"'`
-    2.  等待几秒钟，然后查看日志: `python docker_cli.py logs log-test`
-    3.  (可选) 测试日志跟踪功能: `python docker_cli.py logs -f log-test` (这个命令会持续运行，需要手动 `Ctrl+C` 退出)
-*   **预期结果**:
-    1.  `docker logs log-test` 命令应该能输出容器已经产生的日志 (例如 "line 1", "line 2")。
-    2.  `docker logs -f log-test` 命令会先输出已有日志，然后阻塞，并实时打印后续的输出 (例如 "line 3")。
-    3.  `Ctrl+C` 可以正常退出日志跟踪。
-### 3.7. 用例 7: 镜像清理 (`docker rmi`)
+*   **Steps**:
+    1.  Start a background container to generate some output: `python docker_cli.py run -d --name log-test swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest sh -c 'echo "line 1"; sleep 1; echo "line 2"; sleep 1; echo "line 3"'`
+    2.  Wait a few seconds, then view logs: `python docker_cli.py logs log-test`
+    3.  (Optional) Test log following functionality: `python docker_cli.py logs -f log-test` (this command will keep running, need manual `Ctrl+C` to exit)
+*   **Expected Results**:
+    1.  `docker logs log-test` command should output logs already generated by container (e.g., "line 1", "line 2").
+    2.  `docker logs -f log-test` command will first output existing logs, then block and print subsequent output in real-time (e.g., "line 3").
+    3.  `Ctrl+C` can exit log following normally.
+### 3.7. Case 7: Image Cleanup (`docker rmi`)
 
-*   **步骤**:
-    1.  确保没有基于该镜像的容器在运行。
-    2.  执行命令: `python docker_cli.py rmi swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
-*   **预期结果**:
-    1.  命令成功执行。
-    2.  `~/.docker_proot_cache/` 目录下对应的 `.tar.gz` 和 `.info` 文件被删除。
-    3.  执行 `docker images` 不再显示该镜像。
+*   **Steps**:
+    1.  Ensure no containers based on this image are running.
+    2.  Execute command: `python docker_cli.py rmi swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:latest`
+*   **Expected Results**:
+    1.  Command executes successfully.
+    2.  Corresponding `.tar.gz` and `.info` files in `~/.docker_proot_cache/` directory are deleted.
+    3.  Execute `docker images` no longer shows this image.
 
-### 3.8. 用例 8: 镜像启动兼容性 (需要 root 启动再降权的镜像)
+### 3.8. Case 8: Image Startup Compatibility (Images requiring root startup then privilege drop)
 
-*   **目的**: 覆盖“入口脚本会 `chown` 卷挂载路径并由 supervisor/s6 等进程降权运行”的镜像启动路径。
-*   **步骤**:
-    1.  执行命令: `docker run --name hass-panel -v ./data2:/config/hass-panel registry.cn-hangzhou.aliyuncs.com/hass-panel/hass-panel:latest`
-    2.  如果容器以后台方式运行，执行 `docker logs hass-panel` 观察启动日志。
-*   **预期结果**:
-    1.  不再出现 `Can't drop privilege as nonroot user` 导致的启动失败。
-    2.  若存在 `chown` 行为，不应因“非 root”而直接失败（仍可能因镜像自身原因失败，需结合日志判断）。
+*   **Purpose**: Cover the image startup path of "entry script will `chown` volume mount paths and run with privilege drop by supervisor/s6 etc. processes".
+*   **Steps**:
+    1.  Execute command: `docker run --name hass-panel -v ./data2:/config/hass-panel registry.cn-hangzhou.aliyuncs.com/hass-panel/hass-panel:latest`
+    2.  If container runs in background mode, execute `docker logs hass-panel` to observe startup logs.
+*   **Expected Results**:
+    1.  No longer see startup failure caused by `Can't drop privilege as nonroot user`.
+    2.  If `chown` behavior exists, it should not fail directly due to "non-root" (may still fail due to image itself, need to judge combined with logs).
 
-## 4. 风险与缓解
+## 4. Risks and Mitigation
 
-*   **风险**: 网络问题导致镜像拉取失败。
-    *   **缓解**: 确保测试环境网络通畅，可以访问 `swr.cn-north-4.myhuaweicloud.com`。
-*   **风险**: 华为云镜像仓库的认证机制与预期的 Docker Registry API V2 不完全兼容。
-    *   **缓解**: 如果出现认证失败，需要抓取 `curl` 的详细输出来分析认证流程，并可能需要修改 `create_rootfs_tar.py` 中的认证逻辑。
-## 5. Docker Compose 测试
+*   **Risk**: Network issues causing image pull failure.
+    *   **Mitigation**: Ensure test environment network is smooth and can access `swr.cn-north-4.myhuaweicloud.com`.
+*   **Risk**: Huawei Cloud registry authentication mechanism not fully compatible with expected Docker Registry API V2.
+    *   **Mitigation**: If authentication failure occurs, need to capture detailed `curl` output to analyze authentication flow, and may need to modify authentication logic in `create_rootfs_tar.py`.
+## 5. Docker Compose Testing
 
-### 5.1. 用例 8: `docker-compose up -d`
+### 5.1. Case 8: `docker-compose up -d`
 
-*   **步骤**:
-    1.  创建一个名为 `docker-compose.yml` 的文件，内容如下:
+*   **Steps**:
+    1.  Create a file named `docker-compose.yml` with the following content:
         ```yaml
         version: '1.0'
         services:
@@ -124,18 +124,18 @@
             container_name: "compose-test-db"
             command: "sh -c 'echo DB started && sleep 300'"
         ```
-    2.  执行命令: `python docker_compose_cli.py up -d`
-*   **预期结果**:
-    1.  命令成功执行，没有错误。
-    2.  日志显示正在启动 `app` 和 `db` 两个服务。
-    3.  执行 `python docker_cli.py ps`，可以看到 `compose-test-app` 和 `compose-test-db` 两个容器正在运行。
+    2.  Execute command: `python docker_compose_cli.py up -d`
+*   **Expected Results**:
+    1.  Command executes successfully without errors.
+    2.  Log shows starting `app` and `db` two services.
+    3.  Execute `python docker_cli.py ps`, can see `compose-test-app` and `compose-test-db` two containers running.
 
-### 5.2. 用例 9: `docker-compose down`
+### 5.2. Case 9: `docker-compose down`
 
-*   **步骤**:
-    1.  确保用例 5.1 中的容器正在运行。
-    2.  在包含 `docker-compose.yml` 的目录中，执行命令: `python docker_compose_cli.py down`
-*   **预期结果**:
-    1.  命令成功执行。
-    2.  日志显示正在停止和移除 `compose-test-app` 和 `compose-test-db` 容器。
-    3.  执行 `python docker_cli.py ps -a`，不再显示这两个容器。
+*   **Steps**:
+    1.  Ensure containers from Case 5.1 are running.
+    2.  In the directory containing `docker-compose.yml`, execute command: `python docker_compose_cli.py down`
+*   **Expected Results**:
+    1.  Command executes successfully.
+    2.  Log shows stopping and removing `compose-test-app` and `compose-test-db` containers.
+    3.  Execute `python docker_cli.py ps -a`, no longer shows these two containers.
