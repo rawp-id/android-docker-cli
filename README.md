@@ -17,13 +17,13 @@ You can install this tool with a single command:
 
 ```bash
 # Install latest version (main branch)
-curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/main/scripts/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/install.sh | sh
 
 # Install specific version (e.g., v1.1.0)
-curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/v1.1.0/scripts/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/v1.1.0/scripts/install.sh | sh
 
 # Or use environment variable to specify version
-INSTALL_VERSION=v1.2.0 curl -sSL https://raw.githubusercontent.com/jinhan1414/android-docker-cli/main/scripts/install.sh | sh
+INSTALL_VERSION=v1.2.0 curl -sSL https://raw.githubusercontent.com/rawp-id/android-docker-cli/main/scripts/install.sh | sh
 ```
 
 This will create an executable `docker` command in your path. After installation, you can run the tool by simply typing `docker`.
